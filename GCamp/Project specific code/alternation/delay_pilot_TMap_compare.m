@@ -18,11 +18,16 @@ function [] = delay_pilot_TMap_compare(continuous_sesh, delay_sesh, filter_use,v
 % 
 % - % 'plot_type': 1 (default) = scroll through each neuron for visual 
 %           inspection
+%
 %           2 = run through and save each plot to the continuous_sesh
-%           directory.  Must list the working directory you wish to save
-%           the plots in (suggest NOT using the one with all your MATLAB
-%           variables as this will blow up that folder).  e.g.
+%           directory as a separate pdf.  Must list the working directory 
+%           you wish to save the plots in (suggest NOT using the one with 
+%           all your MATLAB variables as this will blow up that folder).  e.g.
 %           ...'plot_type', 2, [pwd filesep 'plot_folder'],...
+%
+%           3 = same as 2 but all plots are put into the same PDF.  Must be
+%           followed by the full path to the pdf name where the files will
+%           be saved.
 
 %% Get varargins
 plot_type = 1; % default
@@ -40,7 +45,11 @@ for j = 1:length(varargin)
    end
    if strcmpi('plot_type',varargin{j})
       plot_type = varargin{j+1}; 
-      plot_folder = varargin{j+2};
+      if plot_type == 2
+          plot_folder = varargin{j+2};
+      elseif plot_type == 3
+          plot_file = varargin{j+2};
+      end
    end
 end
 
@@ -81,7 +90,9 @@ neurons_to_plot = filter_use;
 
 h1 = figure(501); 
 cm = colormap('jet');
-for j = 1:length(neurons_to_plot) 
+
+p = ProgressBar(length(neurons_to_plot));
+for j = 1:length(neurons_to_plot)
     clf
     % Scale each TMap to reflect pcthits
     TMap_cont_scale = scale_TMap_rough(TMap_continuous{neurons_to_plot(j)},...
@@ -101,22 +112,27 @@ for j = 1:length(neurons_to_plot)
     corr_plot(j) = corr(TMap_continuous{neurons_to_plot(j)}(:),...
         TMap_delay{neurons_to_plot(j)}(:)); % Get correlation value
     
-%     % Make non-occupied spots white - continuous by block 
-%     for k = 1:2
-%         [~, TMap_cont_half_nan{k}] = make_nan_TMap(RunOccMap,...
-%             TMap_cont_half(k).TMap_gauss{neurons_to_plot(j)}); 
-%     end
+    %     % Make non-occupied spots white - continuous by block
+    %     for k = 1:2
+    %         [~, TMap_cont_half_nan{k}] = make_nan_TMap(RunOccMap,...
+    %             TMap_cont_half(k).TMap_gauss{neurons_to_plot(j)});
+    %     end
     
-    subplot(6,1,[1 2]); 
-    imagesc_nan(rot90(TMap_cont_nan,1), cm, [1 1 1], [cmin, round(cmax,1)]);
-    colorbar('Ticks', [cmin, round(cmax,1)]); % Add colorbar
-    title(['Continuous - neuron ' num2str(neurons_to_plot(j)) ...
-        ' with correlation = ' num2str(corr_plot(j),'%.2f')])
-
-    subplot(6,1,[3 4]); 
-    imagesc_nan(rot90(TMap_delay_nan,1), cm, [1 1 1], [cmin, round(cmax,1)]);
-    colorbar('Ticks', [cmin, round(cmax,1)]); % Add colorbar
-    title(['Delayed - neuron ' num2str(neurons_to_plot(j))])
+    try
+        subplot(6,1,[1 2]);
+        imagesc_nan(rot90(TMap_cont_nan,-1), cm, [1 1 1], [cmin, round(cmax,1)]);
+        colorbar('Ticks', [cmin, round(cmax,1)]); % Add colorbar
+        title(['Continuous - neuron ' num2str(neurons_to_plot(j)) ...
+            ' with correlation = ' num2str(corr_plot(j),'%.2f')])
+        
+        subplot(6,1,[3 4]);
+        imagesc_nan(rot90(TMap_delay_nan,-1), cm, [1 1 1], [cmin, round(cmax,1)]);
+        colorbar('Ticks', [cmin, round(cmax,1)]); % Add colorbar
+        title(['Delayed - neuron ' num2str(neurons_to_plot(j))])
+    catch
+        disp('Error catching in delay_pilot_TMap_compare')
+        keyboard
+    end
     
     trans_train = logical(FT(neurons_to_plot(j),:));
     
@@ -161,27 +177,29 @@ for j = 1:length(neurons_to_plot)
         else
             disp(['Error in ' num2str(neurons_to_plot(j)) ' PFiffr'])
         end
-    
+        
     end
     
-%     subplot(6,1,6)
-%     plot(t,y,'b',t(trans_train),y(trans_train),'r*');
-%     xlabel('time (s)'); ylabel('y position (cm)');
-%     legend('Trajectory','Ca Transients');
-%     
-%     half_name = {'1st','2nd'};
-%     for k = 1:2
-%         subplot(2,2,2+k)
-%         imagesc_nan(TMap_cont_half_nan{k},dm,[1 1 1]);
-%         title(['Continuous ' half_name{k} ' - neuron ' num2str(neurons_to_plot(j))])
-%     end
-%     
+    %     subplot(6,1,6)
+    %     plot(t,y,'b',t(trans_train),y(trans_train),'r*');
+    %     xlabel('time (s)'); ylabel('y position (cm)');
+    %     legend('Trajectory','Ca Transients');
+    %
+    %     half_name = {'1st','2nd'};
+    %     for k = 1:2
+    %         subplot(2,2,2+k)
+    %         imagesc_nan(TMap_cont_half_nan{k},dm,[1 1 1]);
+    %         title(['Continuous ' half_name{k} ' - neuron ' num2str(neurons_to_plot(j))])
+    %     end
+    %
     if plot_type == 1
         waitforbuttonpress;
-    elseif plot_type == 2 % Save all stuff to PDFs
-
-%         print(fullfile(plot_folder,['Neuron #',num2str(neurons_to_plot(j))]),'-dpdf'); % formatting for this sucks
+    elseif plot_type == 2 % Save all stuff to individual PDFs
         export_fig(fullfile(plot_folder,['Neuron #',num2str(neurons_to_plot(j))]),'-pdf')
-end
+    elseif plot_type == 3 % Save all to the same pdf
+        export_fig(plot_file,'-pdf','-append')
+    end
+    p.progress;
 
 end
+p.stop;
