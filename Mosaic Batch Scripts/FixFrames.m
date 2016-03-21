@@ -13,28 +13,36 @@ function FixFrames(filename)
 
 %% Parameters and preallocation. 
     imgdata = imfinfo(filename); 
-    numframes = size(imgdata,1); 
+    nFrames = size(imgdata,1); 
+    TifLink = Tiff(filename); 
     
-    meanframes = nan(numframes,1); 
+    meanframes = nan(nFrames,1); 
+    badframes = [];
     
 %% Get the mean pixel value for every frame. 
-    for thisframe = 1:numframes
-        frame = imread(filename,thisframe);
-        meanframes(thisframe) = mean(frame(:)); 
+    for thisframe = 1:nFrames
+        TifLink.setDirectory(thisframe); 
+        frame = TifLink.read();
+        meanframes(thisframe) = mean(frame(:));
+        
+        if any(sum(frame,2) == 0)
+           	badframes = [badframes, thisframe];
+        end
     end
     
 %% Get bad frames. 
     SD = std(meanframes); 
-    toohigh = mean(meanframes) + 6*SD; 
-    toolow = mean(meanframes) - 6*SD;
+    toohigh = median(meanframes) + 4*SD; 
+    toolow = median(meanframes) - 4*SD;
     
-    badframes = find(meanframes > toohigh | meanframes < toolow); 
+    badframes = [badframes, find(meanframes > toohigh | meanframes < toolow)]; 
     numbadframes = length(badframes); 
     
     %Display them. 
     for i=1:numbadframes
         figure;
-        frame = imread(filename,badframes(i)); 
+        TifLink.setDirectory(badframes(i)); 
+        frame = TifLink.read(); 
         imshow(frame,[]);
         title(['Frame #', num2str(badframes(i))]); 
     end
@@ -70,10 +78,22 @@ function FixFrames(filename)
     outputname = [filename(1:end-4), 'fixed.tif']; 
     
     if ~isempty(badframes)
-        for i=1:numframes
-            frame = imread(filename,i);
+        for i=1:nFrames
+            TifLink.setDirectory(i); 
+            frame = TifLink.read(); 
             if ismember(i,badframes);
-                frame = imread(filename,i-1); 
+                j = i; %Initial frame. 
+                stillbad = 1; 
+                
+                %While still in badframes, subtract one from frame number. 
+                while stillbad
+                    j = j-1;    
+                    stillbad = ismember(j,badframes);
+                end
+                
+                %Replace frame. 
+                TifLink.setDirectory(j);
+                frame = TifLink.read(); 
             end
             try
                 imwrite(frame,outputname,'WriteMode','append','Compression','none'); 
@@ -85,10 +105,16 @@ function FixFrames(filename)
         end
         
         %Replace old movie with fixed movie. 
-        delete(filename); 
-        FileRename(outputname,filename);
+        try 
+            delete(filename); 
+        catch
+            pause(1);
+            delete(filename); 
+        end
+        
+        FileRename(outputname,filename,'forced');
     end
     
     save([filename(1:end-4), 'fixed.mat'],'badframes'); 
-    
+    TifLink.close();
 end
