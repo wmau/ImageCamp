@@ -159,13 +159,13 @@ sesh(1).folder = ChangeDirectory(mouse_name, base_date, base_session);
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
     load('ProcOut.mat','c','cTon','GoodTrs')
-    MakeMeanBlobs(c, cTon, GoodTrs)
+    MakeMeanBlobs(c, cTon, GoodTrs,'suppress_output',0)
 end
 sesh(2).folder = ChangeDirectory(mouse_name, reg_date, reg_session);
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
     load('ProcOut.mat','c','cTon','GoodTrs')
-    MakeMeanBlobs(c, cTon, GoodTrs)
+    MakeMeanBlobs(c, cTon, GoodTrs,'suppress_output',0)
 end
 cd(currdir)
 
@@ -197,7 +197,7 @@ for k = 1:2
     catch
         disp(['Running MakeMeanBlobs for session ' num2str(k) ' - this may take awhile'])
         load(fullfile(sesh(k).folder,'ProcOut.mat'),'c','cTon','GoodTrs');
-        MakeMeanBlobs(c,cTon,GoodTrs)
+        MakeMeanBlobs(c,cTon,GoodTrs,'suppress_output',0)
     end
     if k == 2 % Get registration info only if register session
         

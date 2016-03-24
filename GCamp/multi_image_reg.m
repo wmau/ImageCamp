@@ -202,7 +202,15 @@ function [Reg_NeuronIDs] = multi_image_reg(base_struct, reg_struct, varargin)
 %     keyboard
     %% Do the registrations. 
     load(fullfile(base_path,'ProcOut.mat'),'NeuronImage');
-    load(fullfile(base_path,'MeanBlobs.mat'),'BinBlobs');
+    try 
+        load(fullfile(base_path,'MeanBlobs.mat'),'BinBlobs');
+    catch
+        disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
+        load('ProcOut.mat','c','cTon','GoodTrs')
+        MakeMeanBlobs(c, cTon, GoodTrs,'suppress_output',0);
+        load(fullfile(base_path,'MeanBlobs.mat'),'BinBlobs');
+    end
+    
     base_masks = NeuronImage;
     base_masks_mean = BinBlobs;
     for this_session = 1:num_sessions
