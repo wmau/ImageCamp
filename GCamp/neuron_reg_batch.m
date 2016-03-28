@@ -86,11 +86,11 @@ for j = 1:2
         intact = 0;
     end
     
-    if intact == 1
+    if intact
         disp([ 'Reg_NeuronIDs with update_masks = ' num2str(j-1) ...
             ' & use_neuron_masks = ' num2str(use_neuron_masks) ...
             ' found in the working directory, skipping neuron registration.'])
-    elseif intact == 0
+    elseif ~intact
         disp(['Running registration with update masks = ' num2str(j-1) ...
             ' & use_neuron_masks = ' num2str(use_neuron_masks)])
         multi_image_reg(base_struct, reg_struct, 'update_masks', j-1,'use_neuron_masks',...
