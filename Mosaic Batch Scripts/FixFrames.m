@@ -104,17 +104,11 @@ function FixFrames(filename)
             end
         end
         
+        TifLink.close();
         %Replace old movie with fixed movie. 
-        try 
-            delete(filename); 
-        catch
-            pause(1);
-            delete(filename); 
-        end
-        
+        delete(filename); 
         FileRename(outputname,filename,'forced');
     end
     
     save([filename(1:end-4), 'fixed.mat'],'badframes'); 
-    TifLink.close();
 end
