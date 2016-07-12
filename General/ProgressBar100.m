@@ -1,4 +1,4 @@
-classdef ProgressBar < handle
+classdef ProgressBar100 < handle
     %PROGRESSBAR Progress bar class for matlab loops which also works with parfor.
     %   PROGRESSBAR works by creating a file called progressbar_(random_number).txt in
     %   your working directory, and then keeping track of the loop's
@@ -29,6 +29,7 @@ classdef ProgressBar < handle
     %       percent = p.progress;
     %       percent = p.stop;
     %
+    %
     % By: Stefan Doerr
     %
     % Based on: parfor_progress written by Jeremy Scheff    
@@ -37,14 +38,17 @@ classdef ProgressBar < handle
         fname
         width
         verbose
+        increment
     end
     
     methods
-        function obj = ProgressBar(N, varargin)
+        function obj = ProgressBar100(N, varargin)
             p = inputParser;
-            p.addParamValue('verbose',1,@isscalar);
+            p.addParameter('verbose',1,@isscalar);
+            p.addParameter('res',1,@isscalar);
             p.parse(varargin{:});
             obj.verbose = p.Results.verbose;
+            obj.increment = N/(100/p.Results.res);
     
             obj.width = 50; % Width of progress bar
 

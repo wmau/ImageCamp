@@ -1,41 +1,62 @@
 % Batch script for two-env experiment
 close all
-start_ticker = tic;
 
 %% Filtering variables
-trans_rate_thresh = 0.005; %0.005; % Hz
-pval_thresh = 0.05; %0.05; % don't include ANY TMaps with p-values above this
+trans_rate_thresh = 0.005; % Hz
+pval_thresh = 0.5; % don't include ANY TMaps with p-values above this
 within_session = 1;
-num_shuffles = 10; 
+num_shuffles = 1; 
 days_active_use = 2; % Do same plots using only neurons that are active this number of days
 file_append = ''; % If using archived PlaceMaps, this will be appended to the end of the Placemaps files
+num_grids_PFdens = 3; % Number of grids to use when dividing up arena for PFdensity analysis
 
 %% Other variables
 PV_corr_bins = 5; % Number of bins to use for arenas when calculating PV correlations
 
 %% Set up mega-variable - note that working_dir 1 = square sessions and 2 = octagon sessions (REQUIRED)
+[MD, ref] = MakeMouseSessionList('Nat');
 
 Mouse(1).Name = 'G30';
 Mouse(1).working_dirs{1} = 'J:\GCamp Mice\Working\G30\2env\11_19_2014\1 - 2env square left 201B\Working';
 Mouse(1).working_dirs{2} = 'J:\GCamp Mice\Working\G30\2env\11_20_2014\1 - 2env octagon left\Working';
+Mouse(1).square_base_sesh = MD(ref.G30.two_env(1));
 
 Mouse(2).Name = 'G31';
 Mouse(2).working_dirs{1} = 'J:\GCamp Mice\Working\G31\2env\12_15_2014\1 - 2env square right\Working';
 Mouse(2).working_dirs{2} = 'J:\GCamp Mice\Working\G31\2env\12_16_2014\1 - 2env octagon left\Working';
+Mouse(2).square_base_sesh = MD(ref.G31.two_env(1));
 
 Mouse(3).Name = 'G45';
 Mouse(3).working_dirs{1} = 'J:\GCamp Mice\Working\G45\2env\08_28_2015\1 - square right\Working';
 Mouse(3).working_dirs{2} = 'J:\GCamp Mice\Working\G45\2env\08_29_2015\1 - oct right\Working';
+Mouse(3).square_base_sesh = MD(ref.G45.twoenv(1));
 
 Mouse(4).Name = 'G48';
 Mouse(4).working_dirs{1} = 'E:\GCamp Mice\G48\2env\08_29_2015\1 - square right\Working';
 Mouse(4).working_dirs{2} = 'E:\GCamp Mice\G48\2env\08_30_2015\1 - oct mid\Working';
+Mouse(4).square_base_sesh = MD(ref.G48.twoenv(1));
 
 num_animals = length(Mouse);
 
 for j = 1:num_animals
     Mouse(j).key = '1,1 = square distal cues aligned, 1,2 = octagon distal cues aligned, 2,1 = square local cues aligned, 2,2 = octagon local cues aligned';
 end
+
+%% Check for already run instances of the above and load to save time
+
+cd(Mouse(1).working_dirs{1});
+[exist_logical, dirstr] = exist_saved_workspace('workspace','trans_rate_thresh',trans_rate_thresh,...
+        'pval_thresh',pval_thresh,'within_session',within_session,...
+        'num_shuffles',num_shuffles,'PV_corr_bins',PV_corr_bins,...
+        'num_grids_PFdens',num_grids_PFdens);
+% Don't save if it already exists
+if exist_logical == 1
+    disp('Previously ran workspace found - loading and skipping running most stuff')
+    load(dirstr)
+    exist_logical = 1;
+    start_ticker = tic;
+else % Run everything and save at end.
+    start_ticker = tic;
 
 %% Run tmap_corr_across_days for all conditions
 curr_dir = cd;
@@ -48,7 +69,8 @@ for j = 1:num_animals
         Mouse(j).days_active{k} = sum(batch_session_map.map(:,2:end) > 0,2); % Get #days active for each neuron
         tt = tic;
         for m = 0:1
-            [Mouse(j).corr_matrix{m+1,k}, pop_struct_temp, Mouse(j).min_dist_matrix{m+1,k}, Mouse(j).pass_count{m+1,k},...
+            [Mouse(j).corr_matrix{m+1,k}, pop_struct_temp, Mouse(j).min_dist_matrix{m+1,k}, ...
+                Mouse(j).vec_diff_matrix{m+1,k}, Mouse(j).pass_count{m+1,k},...
                 Mouse(j).within_corr{m+1,k}, Mouse(j).shuffle_matrix{m+1,k}, Mouse(j).dist_shuffle_matrix{m+1,k},...
                 Mouse(j).pop_corr_shuffle_matrix{m+1,k}] = ...
                 tmap_corr_across_days(Mouse(j).working_dirs{k},...
@@ -64,6 +86,23 @@ for j = 1:num_animals
     Mouse(j).trans_rate_thresh = trans_rate_thresh;
 end
 cd(curr_dir)
+
+%% Create PF density maps
+disp('Creating PF density maps')
+for j = 1:num_animals
+    for k = 1:2
+       batch_map_use = fix_batch_session_map(Mouse(j).batch_session_map(k));
+       for ll = 1:8
+           dirstr = ChangeDirectory_NK(batch_map_use.session(ll),0); % Get base directory
+           load(fullfile(dirstr,'PlaceMaps_rot_to_std.mat'),'TMap_gauss',...
+               'RunOccMap'); % Load TMaps and Occupancy map
+           temp = create_PFdensity_map(cellfun(@(a) ...
+               make_binary_TMap(a),TMap_gauss,'UniformOutput',0)); % create density map from binary TMaps
+           [~, Mouse(j).PFdens_map{k,ll}] = make_nan_TMap(RunOccMap,temp); % Make non-occupied pixels white
+           Mouse(j).PFdensity_analysis(k).RunOccMap{ll} = RunOccMap; % save RunOccMaps for future analysis
+       end
+    end
+end
 
 %% Dump means into a mega-matrix (combine ALL correlation values here also to get a mega cdf for each session?)
 
@@ -426,7 +465,13 @@ for j = 1:length(Mouse)
      Mouse(j).local_stat2.separate_win.PV_stat_orig_shuffle = temp_local_PV_shuffle;
 end
 
+end
+
 %% Plot stability over time
+
+% Load control data
+[control_dir, ~] = ChangeDirectory('GCamp6f_45','08_05_2015',3,0);
+time_control = load(fullfile(control_dir, 'control_time_data.mat'));
 
 % Add in plot of stability for each arena
 corrs_all = [];
@@ -477,28 +522,41 @@ PV_corrs_sem_by_day = arrayfun(@(a) std(PV_corrs_all(time_all == a))/...
     sum(time_all == a),days_plot);
 PV_shuffle_mean_by_day = arrayfun(@(a) mean(PV_shuffle_all(time_all == a)),days_plot);
 
+% Calculate control sessions
+tcontrol_corrs = arrayfun(@(a) nanmean(a.corrs_half(a.pval > 0.95)), time_control(1).session);
+tcontrol_mean = mean(tcontrol_corrs);
+tcontrol_sem = std(tcontrol_corrs)/length(tcontrol_corrs);
+
+tcontrol_PV_corrs = arrayfun(@(a) nanmean(a.PVcorr(:)),session);
+tcontrol_PV_corr_mean = mean(tcontrol_PV_corrs);
+tcontrol_PV_corr_sem = std(tcontrol_PV_corrs)/length(tcontrol_PV_corrs);
+
 to_plot = ~isnan(corrs_mean_by_day);
 figure(501)
 % Individual TMap correlations
 subplot(2,1,1)
 plot(days_plot(to_plot),corrs_mean_by_day(to_plot),'k.-',days_plot(to_plot),...
-shuffle_mean_by_day(to_plot),'r--') % time_all,corrs_all,'r*'
+shuffle_mean_by_day(to_plot),'r--', 0, tcontrol_mean, 'g.') % time_all,corrs_all,'r*'
 hold on
-errorbar(days_plot(to_plot),corrs_mean_by_day(to_plot),corrs_sem_by_day(to_plot),'k')
+errorbar(days_plot(to_plot),corrs_mean_by_day(to_plot),corrs_sem_by_day(to_plot),'k');
+errorbar(days_plot(to_plot),[tcontrol_mean -1 -1 -1 -1],[tcontrol_sem 0 0 0 0],'g.')
 xlabel('Days between session'); ylabel('Mean correlation')
 title('Stability - Individual Neurons Transient Map Correlations')
-xlim([-0.5 6.5]); set(gca,'XTick',[0 1 2 3 4 5 6])
-legend('Actual','Shuffled')
+xlim([-0.5 6.5]); ylim([0 0.6]); set(gca,'XTick',[0 1 2 3 4 5 6])
+legend('Actual','Shuffled','Continuous Session Control (1st v 2nd half)')
+hold off
 % Population Correlations
 subplot(2,1,2)
 plot(days_plot(to_plot),PV_corrs_mean_by_day(to_plot),'k.-',days_plot(to_plot),...
-PV_shuffle_mean_by_day(to_plot),'r--') % time_all,corrs_all,'r*'
+PV_shuffle_mean_by_day(to_plot),'r--',0,tcontrol_PV_corr_mean,'g.') % time_all,corrs_all,'r*'
 hold on
-errorbar(days_plot(to_plot),PV_corrs_mean_by_day(to_plot),PV_corrs_sem_by_day(to_plot),'k')
+ht1 = errorbar(days_plot(to_plot),PV_corrs_mean_by_day(to_plot),PV_corrs_sem_by_day(to_plot),'k');
+ht2 = errorbar(days_plot(to_plot),[tcontrol_PV_corr_mean -1 -1 -1 -1],[tcontrol_PV_corr_sem 0 0 0 0],'g.');
 xlabel('Days between session'); ylabel('Mean correlation')
 title('Stability - Population Vector Correlations')
-xlim([-0.5 6.5]); set(gca,'XTick',[0 1 2 3 4 5 6])
-legend('Actual','Shuffled')
+xlim([-0.5 6.5]); ylim([-0.1 0.4]); set(gca,'XTick',[0 1 2 3 4 5 6])
+legend('Actual','Shuffled','Continuous Session Control (1st v 2nd half)')
+hold off
 
 % figure(499)
 % plot(time_all,corrs_all,'r*')
@@ -702,23 +760,23 @@ PV_means_by_arena_sem = cellfun(@(a) std(a)/sqrt(length(a)), PV_means_by_arena);
 %%% mid PV correlations but low mean values and look for the rotation that
 %%% gives high correlations with the original to prove the mis-orientation.
 %%%  
-
+plot_all_rot = 0;
+if plot_all_rot == 1
 figure(600)
 
 % Local aligned v Distal aligned Corrs - maybe add in both_aligned here
 % just as a reference?
 subplot(2,2,1)
-bar_w_err([local_rot_corrs_all_mean, distal_rot_corrs_all_mean, shuf_corrs_all_mean;...
-    local_rot_PV_corrs_all_mean, distal_rot_PV_corrs_all_mean, shuf_PV_corrs_all_mean;...
-    local_rot_PV_orig_corrs_all_mean, distal_rot_PV_orig_corrs_all_mean, shuf_PV_orig_all_mean],...
-    [local_rot_corrs_all_sem, distal_rot_corrs_all_sem, shuf_corrs_all_sem;...
-    local_rot_PV_corrs_all_sem, distal_rot_PV_corrs_all_sem, shuf_PV_corrs_all_sem;...
-    local_rot_PV_orig_corrs_all_sem, distal_rot_PV_orig_corrs_all_sem, shuf_PV_orig_all_sem])
-xlim([0 4]); ylim([-0.10 0.4]); 
-set(gca,'XTick',[1 2 3],'XTickLabel',{'Ind. Neurons','Population','Original Population Calc'})
+bar_w_err([corrs_mean_by_day(1), local_rot_corrs_all_mean, distal_rot_corrs_all_mean, shuf_corrs_all_mean;...
+    PV_corrs_mean_by_day(1), local_rot_PV_corrs_all_mean, distal_rot_PV_corrs_all_mean, shuf_PV_corrs_all_mean],... %... %nan, local_rot_PV_orig_corrs_all_mean, distal_rot_PV_orig_corrs_all_mean, shuf_PV_orig_all_mean],...
+    [ corrs_sem_by_day(1), local_rot_corrs_all_sem, distal_rot_corrs_all_sem, shuf_corrs_all_sem;...
+    PV_corrs_sem_by_day(1), local_rot_PV_corrs_all_sem, distal_rot_PV_corrs_all_sem, shuf_PV_corrs_all_sem]); %...
+%     nan, local_rot_PV_orig_corrs_all_sem, distal_rot_PV_orig_corrs_all_sem, shuf_PV_orig_all_sem])
+xlim([0 3]); ylim([-0.10 0.5]); 
+set(gca,'XTick',[1 2],'XTickLabel',{'Ind. Neurons','Population'})% ,'Original Population Calc'})
 ylabel('Mean correlations')
-title('Mean TMap Correlations by cue alignment')
-legend('Local Cues Aligned','Distal Cues Aligned','Shuffled')
+title('Mean TMap Correlations by cue alignment - same day')
+legend('No rotation', 'Local Cues Aligned','Distal Cues Aligned','Shuffled')
 
 % Local Correlations by day
 subplot(2,2,2)
@@ -744,6 +802,22 @@ set(gca,'XTick',[1 2],'XTickLabel',{'Ind. Neurons','Population'})
 ylabel('Mean correlations with local cues aligned')
 title('Mean TMap Correlations by arena')
 legend('Square','Circle')
+end
+
+figure(601)
+
+% Local aligned v Distal aligned Corrs - maybe add in both_aligned here
+% just as a reference?
+bar_w_err([corrs_mean_by_day(1), local_rot_corrs_all_mean, distal_rot_corrs_all_mean, shuf_corrs_all_mean;...
+    PV_corrs_mean_by_day(1), local_rot_PV_corrs_all_mean, distal_rot_PV_corrs_all_mean, shuf_PV_corrs_all_mean],... %... %nan, local_rot_PV_orig_corrs_all_mean, distal_rot_PV_orig_corrs_all_mean, shuf_PV_orig_all_mean],...
+    [ corrs_sem_by_day(1), local_rot_corrs_all_sem, distal_rot_corrs_all_sem, shuf_corrs_all_sem;...
+    PV_corrs_sem_by_day(1), local_rot_PV_corrs_all_sem, distal_rot_PV_corrs_all_sem, shuf_PV_corrs_all_sem]); %...
+%     nan, local_rot_PV_orig_corrs_all_sem, distal_rot_PV_orig_corrs_all_sem, shuf_PV_orig_all_sem])
+xlim([0 3]); ylim([-0.10 0.5]); 
+set(gca,'XTick',[1 2],'XTickLabel',{'Ind. Neurons','Population'})% ,'Original Population Calc'})
+ylabel('Mean correlations')
+title('Mean TMap Correlations by cue alignment - same day')
+legend('No rotation', 'Local Cues Aligned','Distal Cues Aligned','Shuffled')
 
 % Do above but aggregate for all days of separation
 
@@ -1065,10 +1139,24 @@ end
 
 %% Remapping between sessions analysis - plot correlations between designated
 % sessions in circle vs. square
-sessions_compare = [4 7; 3 7; 3 8; 5 6]; 
+sessions_compare = [1 4; 4 7; 3 7; 3 4; 3 8; 5 6]; 
+
+% Register octagon neurons to square neurons
+disp('Registering octagon to square sessions')
+if isempty(Mouse(4).sq_to_cir_map)
+    for j = 1:num_animals
+        disp(['Mouse number ' num2str(j)])
+        load(fullfile(Mouse(j).working_dirs{1},'batch_session_map.mat'))
+        [COM_square, MeanMask_square] = get_batch_COM(batch_session_map);
+        load(fullfile(Mouse(j).working_dirs{2},'batch_session_map.mat'))
+        [COM_circle, MeanMask_circle] = get_batch_COM(batch_session_map,Mouse(j).square_base_sesh);
+        Mouse(j).sq_to_cir_map = COM_register(COM_square, COM_circle, MeanMask_square, MeanMask_circle);
+    end
+end
 
 % Pull out appropriate comparisons
 circ_v_square = cell(2,num_sessions,num_sessions);
+circ_v_square_all = cell(2,2,num_sessions,num_sessions,num_animals);
 for align_type = 1:2
     for arena_type = 1:2
         for j = 1:num_animals
@@ -1076,6 +1164,22 @@ for align_type = 1:2
             for k = 1:size(sessions_compare)
                 circ_v_square{align_type, sessions_compare(k,1), sessions_compare(k,2)}(j,arena_type) = ...
                     temp(sessions_compare(k,1), sessions_compare(k,2));
+                % Assign appropriate indices to use
+                if arena_type == 1
+                    neuron_indices = 1:size(Mouse(j).corr_matrix{align_type,arena_type},3);
+                elseif arena_type == 2
+                    neuron_indices = Mouse(j).sq_to_cir_map;
+                end
+                valid_indices = ~isnan(neuron_indices); % non-nan indices
+                invalid_indices = isnan(neuron_indices); % non-valid neuron assignments
+                
+                circ_v_square_all{align_type, arena_type, sessions_compare(k,1), sessions_compare(k,2),j}...
+                    (valid_indices,1) = Mouse(j).corr_matrix{align_type,arena_type}...
+                    (sessions_compare(k,1),sessions_compare(k,2), neuron_indices(valid_indices));
+                circ_v_square_all{align_type, arena_type, sessions_compare(k,1), sessions_compare(k,2),j}...
+                    (invalid_indices,1) = nan; % Assign NaNs to neurons that don't map between sessions
+                    
+                
             end
         end
     end
@@ -1085,7 +1189,7 @@ align_plot = {'Distal Aligned','Local Aligned'};
 for align_type = 1:2
     figure(700+align_type)
     for j = 1:size(sessions_compare,1)
-        subplot(2,2,j)
+        subplot(2,3,j)
         for m = 1:num_animals
             plot(circ_v_square{align_type,sessions_compare(j,1),sessions_compare(j,2)}(m,1),...
                 circ_v_square{align_type,sessions_compare(j,1),sessions_compare(j,2)}(m,2),...
@@ -1100,6 +1204,299 @@ for align_type = 1:2
         
     end
 end
+
+% Same as above but for ALL neurons
+align_plot = {'Distal Aligned','Local Aligned'};
+for align_type = 1:2
+    figure(710+align_type)
+    for j = 1:size(sessions_compare,1)
+        subplot(2,3,j)
+        for m = 1:num_animals
+            plot(circ_v_square_all{align_type, 1, sessions_compare(j,1), sessions_compare(j,2), m},...
+                circ_v_square_all{align_type, 2, sessions_compare(j,1), sessions_compare(j,2), m},...
+                '*'); hold on;
+        end
+        xlabel('Square Correlation'); ylabel('Circle Correlation');
+        title(['Session ' num2str(sessions_compare(j,1))  ' - ' ...
+            num2str(sessions_compare(j,2)) ' with ' align_plot{align_type}])
+        xlim([-0.2 0.7]); ylim([-0.2 0.7])
+        legend(arrayfun(@(a) a.Name,Mouse,'UniformOutput',0))
+        hold off
+        
+    end
+end
+
+%% More 4-7 session remapping plots
+
+comp_get = {'remap_34','remap_34_sq','remap_34_circ',...
+    'remap_47','remap_47_sq','remap_47_circ', ...
+    'remap_37','remap_37_sq','remap_37_circ',...
+    'remap_56','remap_56_sq','remap_56_circ'};
+
+% fields_get = 
+
+for j = 1:num_animals
+    for kk = 1:length(comp_get)
+    
+    % Get correlations for appropriate sessions (4-7, 3-7, 5-6)
+    [ Mouse(j).local_stat2.remap_47, Mouse(j).distal_stat2.remap_47,  ...
+        Mouse(j).both_stat2.remap_47] = twoenv_get_ind_mean(Mouse(j), ...
+        remap_47_conflict{j}, remap_47_conflict{j}, 'both_sub_use',remap_47_aligned{j});
+    
+    [ Mouse(j).local_stat2.(comp_get{kk}), Mouse(j).distal_stat2.(comp_get{kk}),  ...
+        Mouse(j).both_stat2.(comp_get{kk})] = twoenv_get_ind_mean(Mouse(j), ...
+        remap_struct.([(comp_get{kk}) '_conflict']){j}, remap_struct.([(comp_get{kk}) '_conflict']){j}, ...
+        'both_sub_use',remap_struct.([(comp_get{kk}) '_aligned']){j});
+    end
+end
+
+stat_type = {'local_stat2','distal_stat2'};
+
+for k = 1:length(comp_get)
+    for ll = 1:2
+    temp = arrayfun(@(a) a.(stat_type{ll}).(comp_get{k}).all_means,Mouse,'UniformOutput',0); % Gets values for all mice for comparison in comp_get{k}
+    remap_comb.(comp_get{k}).(stat_type{ll}).all_means = cat(1,temp{:});
+    remap_comb.(comp_get{k}).(stat_type{ll}).mean = mean(remap_comb.(comp_get{k}).(stat_type{ll}).all_means);
+    remap_comb.(comp_get{k}).(stat_type{ll}).sem = std(remap_comb.(comp_get{k}).(stat_type{ll}).all_means)/...
+        sqrt(length(remap_comb.(comp_get{k}).(stat_type{ll}).all_means));
+    end
+end
+
+
+figure(800)
+k = [1 4 7 10];
+
+for j = 1:4
+    subplot(2,2,j)
+    h = bar([remap_comb.([comp_get{k(j)} '_sq']).local_stat2.mean, remap_comb.([comp_get{k(j)} '_sq']).distal_stat2.mean; ...
+        remap_comb.([comp_get{k(j)} '_circ']).local_stat2.mean, remap_comb.([comp_get{k(j)} '_circ']).distal_stat2.mean; ...
+        remap_comb.(comp_get{k(j)}).local_stat2.mean, remap_comb.(comp_get{k(j)}).distal_stat2.mean]);
+    hold on
+    errorbar(h(1).XData + h(1).XOffset, ...
+        [remap_comb.([comp_get{k(j)} '_sq']).local_stat2.mean, remap_comb.([comp_get{k(j)} '_circ']).local_stat2.mean, ...
+        remap_comb.(comp_get{k(j)}).local_stat2.mean], [remap_comb.([comp_get{k(j)} '_sq']).local_stat2.sem, ...
+        remap_comb.([comp_get{k(j)} '_circ']).local_stat2.sem, ...
+        remap_comb.(comp_get{k(j)}).local_stat2.sem],'k.')
+    errorbar(h(2).XData + h(2).XOffset, ...
+        [remap_comb.([comp_get{k(j)} '_sq']).distal_stat2.mean, remap_comb.([comp_get{k(j)} '_circ']).distal_stat2.mean, ...
+        remap_comb.(comp_get{k(j)}).distal_stat2.mean], [remap_comb.([comp_get{k(j)} '_sq']).distal_stat2.sem, ...
+        remap_comb.([comp_get{k(j)} '_circ']).distal_stat2.sem, ...
+        remap_comb.(comp_get{k(j)}).distal_stat2.sem],'k.')
+    hold off
+    title(strrep(comp_get{k(j)},'_','\_'))
+    legend('Local','Distal');
+    set(gca,'XTick',[1 2 3],'XTickLabel',{'Square','Circle','Combined'})
+end
+
+%% Create Place-field density maps - move to top eventually...
+
+% Define properties for smoothing of occupancy maps below
+gauss_std = 2.5; disk_rad = 4; 
+sm_gauss = fspecial('gaussian',[round(8*gauss_std,0), round(8*gauss_std,0)],gauss_std);
+
+arena_type = {'Square', 'Circle'};
+cm = colormap('jet');
+for j = 1:num_animals
+    figure(900+j)
+    for k = 1:2
+       for ll = 1:8
+           subplot(4,4,(k-1)*8+ll)
+           imagesc_nan(Mouse(j).PFdens_map{k,ll},cm,[1 1 1]); % Plot with non-occupied pixels white
+           colorbar
+           title([arena_type{k} ' session ' num2str(ll) ' PF density'])
+           xlabel('Local cues aligned')
+       end
+    end
+end
+
+disp('Making PFdensity difference plots')
+% Now do difference plots
+for j = 1:num_animals
+   for k = 1:2
+       
+       % First calculate all comparisons to get cmax and cmin
+       cmin = 0; cmax = 0;
+       occmin = 0; occmax = 0;
+       for ll = 1:8
+           for mm = 1:8
+               diff_map = Mouse(j).PFdens_map{k,mm} - Mouse(j).PFdens_map{k,ll};
+               cmin = min([cmin nanmin(diff_map(:))]);
+               cmax = max([cmax nanmax(diff_map(:))]);
+               
+               Mouse(j).PFdensity_analysis(k).diff_map{ll,mm} = diff_map;
+               
+               % Calculate PF density differences by grid
+               [~, Mouse(j).PFdensity_analysis(k).grid_sum{ll,mm}] = ...
+                   divide_arena(diff_map,num_grids_PFdens);
+               
+               % Get differences in Occupancy
+               occ_diff_map = nan(size(Mouse(j).PFdensity_analysis(k).RunOccMap{mm}));
+               occ_diff_map(:) = nansum([Mouse(j).PFdensity_analysis(k).RunOccMap{mm}(:) ...
+                   -Mouse(j).PFdensity_analysis(k).RunOccMap{ll}(:)],2); % Get difference, treating nans as zeros with nansum
+               occmap_comb = Mouse(j).PFdensity_analysis(k).RunOccMap{mm} | ...
+                   Mouse(j).PFdensity_analysis(k).RunOccMap{ll}; % combined occupancy map - used identify areas where the mouse was in EITHER session
+               % Smooth difference maps
+               occsum = nansum(occ_diff_map(:)); % Get original occupancy sum
+               temp = imfilter(occ_diff_map, sm_gauss); % Perform smoothing
+               occ_diff_map_sm = temp*occsum./sum(temp(:)); % Make smoothed map add up to the same number as the raw map
+               occmin = min([occmin nanmin(occ_diff_map_sm(:))]);
+               occmax = max([occmax nanmax(occ_diff_map_sm(:))]);
+               [~, occ_diff_map_sm] = make_nan_TMap(occmap_comb,occ_diff_map_sm); % Make non-occupied areas in BOTH conditions NaN
+               Mouse(j).PFdensity_analysis(k).RunOccMap_diff{ll,mm} = occ_diff_map_sm; % Assign to mouse variable
+               
+               % Calculate Occupancy map differences by grid
+               [~, Mouse(j).PFdensity_analysis(k).occ_grid_sum{ll,mm}] = ...
+                   divide_arena(occ_diff_map_sm,num_grids_PFdens);
+               
+           end
+       end
+       
+       % Plot PFdensity differences
+       figure(920+(j-1)*2 + k)
+       set(gcf,'Name',[Mouse(j).Name ' PF density differences'])
+       for ll = 1:8
+           for mm = 1:8
+               subplot(8,8,(ll-1)*8+mm)
+               imagesc_nan(Mouse(j).PFdens_map{k,mm} - Mouse(j).PFdens_map{k,ll},...
+                   cm, [1 1 1], [cmin cmax]);
+               if ll == 1 && mm == 1
+                   colorbar
+               end
+               title([num2str(mm) ' - ' num2str(ll)])
+           end
+       end
+       
+%        % Plot occupancy differences
+%        figure(940+(j-1)*2 + k)
+%        set(gcf,'Name',[Mouse(j).Name ' Occupancy Differences'])
+%        for ll = 1:8
+%            for mm = 1:8
+%                subplot(8,8,(ll-1)*8+mm)
+%                imagesc_nan(Mouse(j).PFdensity_analysis(k).RunOccMap_diff{ll,mm},...
+%                    cm, [1 1 1])% , [occmin occmax]);
+%                if ll == 1 && mm == 1
+%                    colorbar
+%                end
+%                title([num2str(mm) ' - ' num2str(ll)])
+%            end
+%        end
+       
+   end
+end
+
+% Combine all
+grid_sum_all = nan(2,8,8,num_grids_PFdens,num_grids_PFdens,num_animals);
+occ_grid_sum_all = nan(2,8,8,num_grids_PFdens,num_grids_PFdens,num_animals);
+for k = 1:2
+    for ll = 1:7
+        for mm = ll+1:8
+            temp = [];
+            for j = 1:num_animals
+                grid_sum_all(k,ll,mm,:,:,j) = ...
+                    Mouse(j).PFdensity_analysis(k).grid_sum{ll,mm};
+                occ_grid_sum_all(k,ll,mm,:,:,j) = ...
+                    Mouse(j).PFdensity_analysis(k).occ_grid_sum{ll,mm};
+            end
+        end
+    end
+end
+
+% Run stats on above
+% For all session-mice-arena-grid combos individually
+grid_sum_mean = nanmean(grid_sum_all(:));
+grid_sum_std = nanstd(grid_sum_all(:));
+grid_sum_z = (grid_sum_all - grid_sum_mean)./grid_sum_std;
+% How do I want to do this?  Should I combine all the mice into one
+% mega-session, get a distribution of PF density changes from all sessions
+% and all grids, and then calculate where the combined value lies on that
+% distribution with a ztest?
+
+% For combined mice
+grid_sum_comb = mean(grid_sum_all,6); % Gives you a mean for all mice (num_arenas x num_sessions x num_sessions x num_grids x num_grids)
+grid_sum_comb_mean = nanmean(grid_sum_comb(:));
+grid_sum_comb_std = nanstd(grid_sum_comb(:));
+occ_grid_sum_comb = mean(occ_grid_sum_all,6);
+% I think this is a good start for how to do a z-test to prove PFs move
+% toward the hallway during the connected sessions
+[h, p] = ztest(squeeze(grid_sum_comb(1,1:4,5:6,3,2)),grid_sum_comb_mean,grid_sum_comb_std);
+
+% Bar graph comparing PF density in each arena near the hallway to the rest
+% of the arena - do ANOVA on the two groups (effect of grid location?)
+[ conn_hw_mean_square, conn_hw_sem_square, conn_hw_square_all, conn_nonhw_mean_square, ...
+    conn_nonhw_sem_square, conn_nonhw_square_all ] = twoenv_get_hallway_PFincrease( grid_sum_comb, 3, 2, 1);
+[ conn_hw_mean_circle, conn_hw_sem_circle, conn_hw_circle_all, conn_nonhw_mean_circle, ...
+    conn_nonhw_sem_circle, conn_nonhw_circle_all ] = twoenv_get_hallway_PFincrease( grid_sum_comb, 1, 2, 2);
+[ occ_conn_hw_mean_square, occ_conn_hw_sem_square, occ_conn_hw_square_all, occ_conn_nonhw_mean_square, ...
+    occ_conn_nonhw_sem_square, occ_conn_square_nonhw_all ] = twoenv_get_hallway_PFincrease( occ_grid_sum_comb, 3, 2, 1);
+[ occ_conn_hw_mean_circle, occ_conn_hw_sem_circle, occ_conn_hw_circle_all, occ_conn_nonhw_mean_circle, ...
+    occ_conn_nonhw_sem_circle, occ_conn_nonhw_circle_all] = twoenv_get_hallway_PFincrease( occ_grid_sum_comb, 1, 2, 2);
+
+%% Attempts to combine PFdensity plots for ALL mice into one.
+k =2; ll = 3;
+temp = Mouse(1).PFdens_map{k,ll};
+size_use = size(temp);
+for j = 2:num_animals
+    temp = cat(3,temp,resize(Mouse(j).PFdens_map{k,ll},size_use));
+end
+
+figure(1002)
+for j = 1:num_animals
+    subplot(2,5,j)
+    imagesc_nan(Mouse(j).PFdens_map{k,ll},cm,[1 1 1])
+    title('Original')
+    subplot(2,5,5+j)
+    imagesc_nan(squeeze(temp(:,:,j)),cm,[1 1 1])
+    title('Resized')
+end
+
+% For above, Mouse(4) has his arena off-kilter from the others.  May need
+% to re-run everything for him.  For now, combine the first three only
+
+figure(1002)
+subplot(2,5,10)
+imagesc_nan(nanmean(temp(:,:,1:3),3),cm,[1 1 1])
+title('Resized and combining mice 1-3')
+
+%% PF density plots
+figure(930)
+subplot(2,2,1) 
+h10 = bar([conn_hw_mean_square conn_nonhw_mean_square; conn_hw_mean_circle ...
+    conn_nonhw_mean_circle]);
+hold on;
+errorbar(h10(1).XData + h10(1).XOffset, [conn_hw_mean_square conn_hw_mean_circle], ...
+    [conn_hw_sem_square conn_hw_sem_circle],'k.');
+errorbar(h10(2).XData + h10(2).XOffset, [conn_nonhw_mean_square conn_nonhw_mean_circle], ...
+    [conn_nonhw_sem_square conn_nonhw_sem_circle],'k.');
+hold off
+set(gca,'XTickLabel',{'Square','Circle'})
+legend('Near Hallway','Everywhere else')
+title('Increase in PF density by arena region')
+ylabel('Number fields')
+subplot(2,2,2)
+hist(grid_sum_comb(:),50)
+xlabel('PF density change (#fields/grid)')
+ylabel('Count');
+% Occupany plots
+subplot(2,2,3)
+h10 = bar([occ_conn_hw_mean_square occ_conn_nonhw_mean_square; occ_conn_hw_mean_circle ...
+    occ_conn_nonhw_mean_circle]);
+hold on;
+errorbar(h10(1).XData + h10(1).XOffset, [occ_conn_hw_mean_square occ_conn_hw_mean_circle], ...
+    [occ_conn_hw_sem_square occ_conn_hw_sem_circle],'k.');
+errorbar(h10(2).XData + h10(2).XOffset, [occ_conn_nonhw_mean_square occ_conn_nonhw_mean_circle], ...
+    [occ_conn_nonhw_sem_square occ_conn_nonhw_sem_circle],'k.');
+hold off
+set(gca,'XTickLabel',{'Square','Circle'})
+legend('Near Hallway','Everywhere else')
+title('Increase in Occupancy by arena region')
+subplot(2,2,4)
+hist(occ_grid_sum_comb(:),100)
+xlabel('Occupancy change (need unit here)')
+ylabel('Count');
+
+
+% Similar analysis for Occupancy in each region
+
 
 
 %%
@@ -1267,3 +1664,14 @@ for j = 1:num_animals
         end
     end
 end
+
+%% Save workspace for future easy reference
+
+if exist_logical == 0
+    cd(Mouse(1).working_dirs{1});
+    [savefile_name] = save_workspace_name('workspace');
+    disp(['Saving workspace as ' fullfile(Mouse(1).working_dirs{1},savefile_name)])
+    save(savefile_name)
+end
+
+
