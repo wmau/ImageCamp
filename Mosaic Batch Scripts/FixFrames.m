@@ -16,10 +16,11 @@ function FixFrames(filename)
     nFrames = size(imgdata,1); 
     TifLink = Tiff(filename); 
     
-    meanframes = nan(nFrames,1); 
+    meanframes = nan(1,nFrames); 
     badframes = [];
     
 %% Get the mean pixel value for every frame. 
+    p = ProgressBar(nFrames);
     for thisframe = 1:nFrames
         TifLink.setDirectory(thisframe); 
         frame = TifLink.read();
@@ -28,7 +29,10 @@ function FixFrames(filename)
         if any(sum(frame,2) == 0)
            	badframes = [badframes, thisframe];
         end
+        
+        p.progress;
     end
+    p.stop;
     
 %% Get bad frames. 
     SD = std(meanframes); 
@@ -78,6 +82,7 @@ function FixFrames(filename)
     outputname = [filename(1:end-4), 'fixed.tif']; 
     
     if ~isempty(badframes)
+        disp('Replacing frames...');
         for i=1:nFrames
             TifLink.setDirectory(i); 
             frame = TifLink.read(); 
