@@ -20,7 +20,7 @@ function [ neuron_map] = image_register_simple( mouse_name, base_date, base_sess
 %
 %   varargins
 %       'multi_reg': (optional) specify as ...,'multi_reg', 1. 0 (default) - 
-%       use base_file NeuronImage variable from ProcOut.mat for registration 
+%       use base_file NeuronImage variable from FinalOutput.mat for registration 
 %       of neurons.  1 - used only in conjunction with multi_image_reg -
 %       uses AllMasks from Reg_NeuronID for future registrations, with update_masks = 0. 
 %       2 - same as 1 but update_masks = 1. 
@@ -158,14 +158,16 @@ currdir = cd;
 sesh(1).folder = ChangeDirectory(mouse_name, base_date, base_session);
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
-    load('ProcOut.mat','c','cTon','GoodTrs')
-    MakeMeanBlobs(c, cTon, GoodTrs,'suppress_output',0)
+    load('FinalOutput.mat','NeuronImage');
+    load('ROIavg.mat');
+    MakeMeanBlobs2(NeuronImage,ROIavg);
 end
 sesh(2).folder = ChangeDirectory(mouse_name, reg_date, reg_session);
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
-    load('ProcOut.mat','c','cTon','GoodTrs')
-    MakeMeanBlobs(c, cTon, GoodTrs,'suppress_output',0)
+    load('FinalOutput.mat','NeuronImage');
+    load('ROIavg.mat');
+    MakeMeanBlobs2(NeuronImage,ROIavg);
 end
 cd(currdir)
 
@@ -191,13 +193,14 @@ catch
 %% Get centers-of-mass of all cells after registering 2nd image to 1st image
 for k = 1:2
     % Load Neuron Masks and average activation
-    load(fullfile(sesh(k).folder, 'ProcOut.mat'),'NeuronImage');
+    load(fullfile(sesh(k).folder, 'FinalOutput.mat'),'NeuronImage');
     try
         load(fullfile(sesh(k).folder, 'MeanBlobs.mat'),'BinBlobs');
     catch
         disp(['Running MakeMeanBlobs for session ' num2str(k) ' - this may take awhile'])
-        load(fullfile(sesh(k).folder,'ProcOut.mat'),'c','cTon','GoodTrs');
-        MakeMeanBlobs(c,cTon,GoodTrs,'suppress_output',0)
+        load('FinalOutput.mat','NeuronImage');
+        load('ROIavg.mat');
+        MakeMeanBlobs2(NeuronImage,ROIavg);
     end
     if k == 2 % Get registration info only if register session
         
@@ -396,7 +399,7 @@ title('1 = session 1, 2 = session 2, 3 = both sessions')
         % Dump all neuron images into a single variable
         for i = 1:2
             cd(sesh(i).folder);
-            load('ProcOut.mat','NeuronImage');
+            load('FinalOutput.mat','NeuronImage');
             for j = 1:size(NeuronImage,2)
                 temp5{i,j} = NeuronImage{j};
             end
