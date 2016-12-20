@@ -64,8 +64,8 @@ while skewed
     ymax = max(rot_y); ymin = min(rot_y);
     
     %% Establish maze arm boundaries.
-    w = (ymax-ymin)/5; %40;   Width of arms.
-    l = (xmax-xmin)/8.1; %80;   Shift from top/bottom of maze for center stem.
+    w = (ymax-ymin)/5;      %40;   Width of arms.
+    l = (xmax-xmin)/8.1;    %80;   Shift from top/bottom of maze for center stem.
     
     %Find center arm borders.
     center = getcenterarm(rot_x,rot_y,w,l);

@@ -14,16 +14,10 @@ function [h] = subplot_auto( n_total, n )
 
 if n_total <= 2
     h = subplot(1,2,n);
-elseif n_total <= 4
-    h = subplot(2,2,n);
-elseif n_total <= 9
-    h = subplot(3,3,n);
-elseif n_total <= 16
-    h = subplot(4,4,n);
-elseif n_total <= 25
-    h = subplot(5,5,n);
-else
-    disp('You really want to have more than 25 subplots in a figure?')
+elseif n_total > 2
+    n_totalsqrt = ceil(sqrt(n_total));
+    
+    h = subplot(n_totalsqrt,n_totalsqrt,n);
 end
 
 end
