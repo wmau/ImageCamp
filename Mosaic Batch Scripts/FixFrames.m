@@ -20,8 +20,10 @@ function FixFrames(filename)
     badframes = [];
     
 %% Get the mean pixel value for every frame. 
-    p = ProgressBar(nFrames);
-    for thisframe = 1:nFrames
+    resolution = 2;
+    updateInc = round(nFrames/(100/resolution));
+    p = ProgressBar(100/resolution);
+    parfor thisframe = 1:nFrames
         TifLink.setDirectory(thisframe); 
         frame = TifLink.read();
         meanframes(thisframe) = mean(frame(:));
@@ -30,7 +32,9 @@ function FixFrames(filename)
            	badframes = [badframes, thisframe];
         end
         
-        p.progress;
+        if round(thisframe/updateInc) = (thisframe/updateInc)
+            p.progress;
+        end
     end
     p.stop;
     
