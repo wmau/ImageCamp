@@ -162,17 +162,15 @@ sesh(1).folder = ChangeDirectory(mouse_name, base_date, base_session);
 
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
-    load('FinalOutput.mat','NeuronImage');
-    load('ROIavg.mat');
-    MakeMeanBlobs2(NeuronImage,ROIavg);
+    load('FinalOutput.mat','NeuronImage','NeuronAvg');
+    MakeMeanBlobs4(NeuronImage,NeuronAvg);
 end
 
 sesh(2).folder = ChangeDirectory(mouse_name, reg_date, reg_session);
 if ~(exist('MeanBlobs.mat','file') == 2)
     disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
-    load('FinalOutput.mat','NeuronImage');
-    load('ROIavg.mat');
-    MakeMeanBlobs2(NeuronImage,ROIavg);
+    load('FinalOutput.mat','NeuronImage','NeuronAvg');
+    MakeMeanBlobs4(NeuronImage,NeuronAvg);
 end
 cd(currdir)
 

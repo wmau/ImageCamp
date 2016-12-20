@@ -207,9 +207,8 @@ function [Reg_NeuronIDs] = multi_image_reg(base_struct, reg_struct, varargin)
     catch
         disp('MeanBlobs.mat not detected in working directory.  Running MakeMeanBlobs (This may take awhile)')
         cd(base_path);
-        load('FinalOutput.mat','NeuronImage');
-        load('ROIavg.mat');
-        MakeMeanBlobs2(NeuronImage,ROIavg);
+        load('FinalOutput.mat','NeuronImage','NeuronAvg');
+        MakeMeanBlobs4(NeuronImage,NeuronAvg);
         load(fullfile(base_path,'MeanBlobs.mat'),'BinBlobs');
     end
     
