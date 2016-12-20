@@ -8,6 +8,7 @@ PMstatsfile = 'PFstatsv2.mat';
 custom_colors = []; % default
 % ds_factor = 1; % Factor by which to downsample cells
 neurons_use = []; % Custom fields to use for plotting
+alpha_use = 1;
 for j = 1:length(varargin)
     if strcmpi(varargin{j},'ax_handle')
         ax_handle = varargin{j+1};
@@ -26,6 +27,9 @@ for j = 1:length(varargin)
 %     end
     if strcmpi(varargin{j},'neurons_use')
        neurons_use = varargin{j+1};
+    end
+    if strcmpi(varargin{j},'alpha_use')
+        alpha_use = varargin{j+1};
     end
 end
 
@@ -54,6 +58,12 @@ if isempty(custom_colors)
     colors = rand(NumNeurons,3);
 elseif ~isempty(custom_colors)
     colors = custom_colors;
+    
+    % If only one color value is entered, extend it to match the number of
+    % neurons
+    if size(custom_colors,1) == 1
+        colors = repmat(custom_colors, NumNeurons,1);
+    end
 end
 
 % keyboard
@@ -103,7 +113,9 @@ for j = active_fields_use'
         xt = Xb2AVI(b{1}(:,1));
         xt= xt+(rand(size(xt))-0.5)/2;
         yt= yt+(rand(size(yt))-0.5)/2;
-        plot(xt,yt,'Color',colors(j,:),'LineWidth',2);
+%         plot(xt,yt,'Color',colors(j,:),'LineWidth',2);
+        patchline(xt, yt, 'EdgeColor', colors(j,:), 'LineWidth', 2, ...
+            'EdgeAlpha', alpha_use)
         
 %         
 %         yt = b{1}(:,2);
@@ -126,3 +138,4 @@ view([90 90])
 
 end
 
+>>>>>>> refs/remotes/nkinsky/master
