@@ -7,25 +7,21 @@ function NOparseGUI( ~,~ )
 % start logging on that lap number
 
 %% Nat to-do for making NO tracker
-% 1) Add-in KeyPress - 1/9 = Lower-left/upper-right exploration
-% - need nLL and nUR - increment by one each time it is pushed? Display at
-% top?
-% 2) Make variable to save on each try?
 % 3) Add in update to show which object was selected for a given frame
 % 4) Change button names/eliminate buttons
-% 5) De-bug - make sure each LL/UR press is accurately recorded, that
-% re-writing is ok, and that you can erase properly with 5 button
+% 5) Make sure that you can re-start a previous session if it crashes -
+% re-load NOvar variable AND pop up dialog box letting them know this is
+% happening. *******
 
 
 %%
 global miscVar
-global ParsedFrames
 global videoFig
-global video
 global NOVar
 
-msgbox({'Notes on use:';' Q/R - step back/forward 100';...
-        ' A/F - step back/forward 10'; ' S/D  - step back/forward 1';' ';...
+msgbox({'Notes on use:'; ' A/F - step back/forward 1 second'; ' numpad1 = mouse exploring lower-left object'; ...
+        ' numpad9 = mouse exploring upper-right object '; ' numpad5 = mouse NOT exploring either object'; ...
+        ' (use to fix mistaken numpad9 or numpad1 push'; ' ';...
         'Click off of button for keyboard!'})
 
 miscVar.panelHeight = 480;
@@ -36,6 +32,7 @@ title('Frame 1/lots')
 miscVar.upperLimit = miscVar.panelHeight - 120;
 miscVar.buttonStepDown = 40;
 miscVar.buttonLeftEdge = 560;
+miscVar.buttonMiddleEdge = 622;
 miscVar.buttonSecondCol = 705;
 miscVar.buttonWidth = 130;
 miscVar.Gray=[0.94,0.94,0.94];
@@ -43,391 +40,143 @@ miscVar.Red=[1,0.5,0.5];
 miscVar.Green = [0.5 1 0.5];
 miscVar.VideoLoadedFlag=0;
 miscVar.LapsWorkedOn=[];
+miscVar.xLL = [];
+miscVar.yLL = [];
+miscVar.xUR = [];
+miscVar.yUR = [];
 
 NOVar.LLframes = [];
-NOVar.URframes = [];
-
-
-videoFig.LapNumberButton = uicontrol('Style','pushbutton','String','LAP NUMBER',...
-                           'Position',[miscVar.buttonLeftEdge+60,miscVar.upperLimit+50,miscVar.buttonWidth,30],...
-                           'Callback',{@fcnLapNumberButton},'BackgroundColor',miscVar.Gray);
-miscVar.LapNumber=1;                       
-
-videoFig.LapNumberBox = uicontrol('Style','edit','string','1',...
-                           'Position',[miscVar.buttonLeftEdge+60+miscVar.buttonWidth+15,miscVar.upperLimit+50,...
-                           50,30]);
-                       
-videoFig.LapNumberPlus = uicontrol('Style','pushbutton','String','+',...
-                           'Position',[miscVar.buttonLeftEdge+60+miscVar.buttonWidth+15+52,miscVar.upperLimit+65,...
-                           20,15],'Callback',{@fcnLapNumberPlus});
-                       
-videoFig.LapNumberMinus = uicontrol('Style','pushbutton','String','-',...
-                           'Position',[miscVar.buttonLeftEdge+60+miscVar.buttonWidth+15+52,miscVar.upperLimit+50,...
-                           20,15],'Callback',{@fcnLapNumberMinus});
-                       
-%% Set up
+NOVar.URframes = [];  
+NOVar.nLL = 0;
+NOVar.nUR = 0;
+NOVar.Questionable = [];
+%% Layout for Novel Object
 fcnLoadVideo;
-sessionType = questdlg('What kind of session is this?', 'Session Type',...
-                              'DNMP','ForcedUnforced','Other','DNMP');
-switch sessionType
-    case 'DNMP'
-        miscVar.sessionClass=1;
-    case 'ForcedUnforced'
-        miscVar.sessionClass=2;
-    case 'Other'
-        disp('Not yet...')
-        miscVar.sessionClass=3;
-        %In theory this will be where you can load or enter 
-        %What labels and order and it will generate appropriate buttons
-end        
+miscVar.buttonsInUse={'UpperRightButton';'NeitherButton';...
+    'LowerLeftButton';'QuestionableButton'}; 
 
-%% Layout for DNMP
-switch miscVar.sessionClass
-    case 1
-        miscVar.buttonsInUse={'LapStartButton';'EnterDelayButton';...
-                               'LiftBarrierButton';'LeaveMazeButton';
-                               'StartHomecageButton';'LeaveHomecageButton';'ForcedTrialDirButton';...
-                               'FreeTrialDirButton'}; 
-videoFig.LapStartButton = uicontrol('Style','pushbutton','String','LAP START',...
-                           'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit,miscVar.buttonWidth,30],...
-                           'Callback',{@fcnLapStartButton});
-                       
-videoFig.EnterDelayButton = uicontrol('Style','pushbutton','String','ENTER DELAY',...
+videoFig.UpperRightButton = uicontrol('Style','pushbutton','String','UPPER RIGHT OBJECT (9)',...
                              'Position',[miscVar.buttonSecondCol,miscVar.upperLimit, miscVar.buttonWidth,30],...
-                             'Callback',{@fcnEnterDelayButton});
+                             'Callback',{@fcnUpperRightButton});
                          
-videoFig.LiftBarrierButton = uicontrol('Style','pushbutton','String','LIFT BARRIER',...
-                             'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*1,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnLiftBarrierButton});
+videoFig.NeitherButton = uicontrol('Style','pushbutton','String','NEITHER (5)',...
+                             'Position',[miscVar.buttonMiddleEdge,miscVar.upperLimit - miscVar.buttonStepDown*1,...
+                             miscVar.buttonWidth,30], 'Callback',{@fcnNeitherButton});
                          
-videoFig.LeaveMazeButton = uicontrol('Style','pushbutton','String','LEAVE MAZE',...
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*1,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnLeaveMazeButton});
-
-videoFig.StartHomecageButton = uicontrol('Style','pushbutton','String','START HOMECAGE',...
+videoFig.LowerLeftButton = uicontrol('Style','pushbutton','String','LOWER LEFT OBJECT (1)',...
                              'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*2,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnStartHomecageButton});
-
-videoFig.LeaveHomecageButton = uicontrol('Style','pushbutton','String','LEAVE HOMECAGE',...
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*2,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnLeaveHomecageButton});
-
-videoFig.ForcedTrialDirButton = uicontrol('Style','pushbutton','String','FORCED TRIAL DIR',...
-                                'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*3,...
-                                130,30], 'Callback',{@fcnForcedDirButton});
-
-videoFig.PopForcedDir = uicontrol('Style','popup',... 
-                             'Position',[miscVar.buttonLeftEdge+130+10,miscVar.upperLimit - miscVar.buttonStepDown*3-7,95,30],...
-                             'string',{'          LEFT   ';'         RIGHT   '},...
-                             'Value', 1);
-
-videoFig.FreeTrialDirButton = uicontrol('Style','pushbutton','String','FREE TRIAL DIR',...
-                             'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*4,130,30],...
-                             'Callback',{@fcnFreeDirButton});
-
-videoFig.PopFreeDir = uicontrol('Style','popup',... 
-                             'Position',[miscVar.buttonLeftEdge+130+10,miscVar.upperLimit - miscVar.buttonStepDown*4-7,95,30],...
-                             'string',{'          LEFT   ';'         RIGHT   '},...
-                             'Value', 1); 
-
-headings={'Trial #'; 'Start on maze (start of Forced'; 'Lift barrier (start of free choice)';...
-            'Leave maze'; 'Start in homecage'; 'Leave homecage'; 'Forced Trial Type (L/R)';...
-            'Free Trial Choice (L/R)'; 'Enter Delay'};
-ParsedFrames.LapNumber={headings{1}};        
-ParsedFrames.LapStart={headings{2}}; 
-ParsedFrames.LiftBarrier={headings{3}};
-ParsedFrames.LeaveMaze={headings{4}};
-ParsedFrames.StartHomecage={headings{5}};
-ParsedFrames.LeaveHomecage={headings{6}};
-ParsedFrames.ForcedDir={headings{7}};
-ParsedFrames.FreeDir={headings{8}};
-ParsedFrames.EnterDelay={headings{9}};
+                             miscVar.buttonWidth,30], 'Callback',{@fcnLowerLeftButton});
                          
-
-%% Layout for ForcedUnforced
-    case 2
-        miscVar.buttonsInUse={'LapStartButton';'EnterDelayButton';...
-                               'LeaveMazeButton';'StartHomecageButton';...
-                               'LeaveHomecageButton';'TrialTypeButton';...
-                               'TrialDirButton'}; 
-videoFig.LapStartButton = uicontrol('Style','pushbutton','String','LAP START',...
-                           'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit,miscVar.buttonWidth,30],...
-                           'Callback',{@fcnLapStartButton});
-                       
-videoFig.EnterDelayButton = uicontrol('Style','pushbutton','String','ENTER DELAY',...
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit, miscVar.buttonWidth,30],...
-                             'Callback',{@fcnEnterDelayButton});
+videoFig.QuestionableButton = uicontrol('Style','pushbutton','String','QUESTIONABLE',...
+                             'Position',[miscVar.buttonMiddleEdge,miscVar.upperLimit - miscVar.buttonStepDown*3,...
+                             miscVar.buttonWidth,30], 'Callback',{@fcnQuestionableButton});
                          
-videoFig.LeaveMazeButton = uicontrol('Style','pushbutton','String','LEAVE MAZE',...
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*1,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnLeaveMazeButton});
-                         
-videoFig.StartHomecageButton = uicontrol('Style','pushbutton','String','START HOMECAGE',...
-                             'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*2,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnStartHomecageButton});
-
-videoFig.LeaveHomecageButton = uicontrol('Style','pushbutton','String','LEAVE HOMECAGE',...
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*2,...
-                             miscVar.buttonWidth,30], 'Callback',{@fcnLeaveHomecageButton});                         
-
-videoFig.TrialTypeButton = uicontrol('Style','pushbutton','String','TRIAL TYPE',...
-                                'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*3,...
-                                130,30], 'Callback',{@fcnTrialTypeButton});
-
-videoFig.PopTrialType = uicontrol('Style','popup',... 
-                             'Position',[miscVar.buttonLeftEdge+130+10,miscVar.upperLimit - miscVar.buttonStepDown*3-7,110,30],...
-                             'string',{'        FORCED   ';'         FREE   '},...
-                             'Value', 1);
-
-videoFig.TrialDirButton = uicontrol('Style','pushbutton','String','TRIAL DIR',...
-                             'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*4,130,30],...
-                             'Callback',{@fcnTrialDirButton});
-
-videoFig.PopTrialDir = uicontrol('Style','popup',... 
-                             'Position',[miscVar.buttonLeftEdge+130+10,miscVar.upperLimit - miscVar.buttonStepDown*4-7,110,30],...
-                             'string',{'          LEFT   ';'         RIGHT   '},...
-                             'Value', 1); 
-                         
-headings={'Trial #'; 'Start on maze (start of Forced'; 'Enter delay';...
-            'Leave maze'; 'Start in homecage'; 'Leave homecage'; 'Trial Type (FORCED/FREE)';...
-            'Trial Dir (L/R)'};
-ParsedFrames.LapNumber={headings{1}};        
-ParsedFrames.LapStart={headings{2}}; 
-ParsedFrames.EnterDelay={headings{3}};
-ParsedFrames.LeaveMaze={headings{4}};
-ParsedFrames.StartHomecage={headings{5}};
-ParsedFrames.LeaveHomecage={headings{6}};
-ParsedFrames.TrialType={headings{7}};
-ParsedFrames.TrialDir={headings{8}};
-
-
-    case 3
-        disp('Sorry bro')
-end
-%%
+%% Other buttons
                          
 videoFig.LoadVideoButton = uicontrol('Style','pushbutton','String','LOAD VIDEO',...
                              'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*6,...
                              miscVar.buttonWidth,30],'Callback',{@fcnLoadVideo}); 
-                         
-videoFig.SaveSheetExcel = uicontrol('Style','pushbutton','String','SAVE SHEET',...                         
-                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*6,...
-                             miscVar.buttonWidth,30],'Callback',{@fcnSaveSheet});     
-                         
-videoFig.JumpFrameButton = uicontrol('Style','pushbutton','String','JUMP TO FRAME',...
+                 
+videoFig.JumpFrameButton = uicontrol('Style','pushbutton','String','JUMP TO TIME',...
                              'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*7,...
                              miscVar.buttonWidth,30], 'Callback',{@fcnJumpFrameButton});
-
-
-videoFig.LoadSheetExcel = uicontrol('Style','pushbutton','String','LOAD SHEET',...                         
+                         
+videoFig.SaveTempFileButton = uicontrol('Style','pushbutton','String','SAVE TEMP FILE',...
+                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*6,...
+                             miscVar.buttonWidth,30],'Callback',{@fcnSaveTempFile}); 
+                 
+videoFig.SaveFinalFileButton = uicontrol('Style','pushbutton','String','SAVE FINAL FILE',...
                              'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*7,...
-                             miscVar.buttonWidth,30],'Callback',{@fcnLoadSheet});     
+                             miscVar.buttonWidth,30], 'Callback',{@fcnSaveFinalFile});
                          
-videoFig.fakePlay = uicontrol('Style','pushbutton','String','PLAY',...
-                        'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*8,...
-                        miscVar.buttonWidth,30], 'BackgroundColor',miscVar.Gray,'Callback',{@fcnFakePlayer});
 
-videoFig.PopFakePlaySpeed = uicontrol('Style','popup',... 
-                             'Position',[miscVar.buttonLeftEdge+130+10,miscVar.upperLimit - miscVar.buttonStepDown*8-7,95,30],...
-                             'string',{'          1x   ';'         2x   ';'         4x   ';'        10x   '},...
-                             'Value', 1,'Callback',{@fcnSetFakePlaySpeed}); 
-                         
-%%
+videoFig.DrawLLoutlineButton = uicontrol('Style','pushbutton','String','DRAW LL outline',...
+                             'Position',[miscVar.buttonLeftEdge,miscVar.upperLimit - miscVar.buttonStepDown*5,...
+                             miscVar.buttonWidth,30], 'Callback',{@fcnDrawLLoutline});
+videoFig.DrawLLoutlineButton.BackgroundColor=miscVar.Green;
 
-
-end
-%%
-function fcnLapNumberButton(~,~)
-global miscVar
-global videoFig
-
-disp('Lap number')
-try 
-    miscVar.hold=miscVar.LapNumber;
-    miscVar.LapNumber=str2double(videoFig.LapNumberBox.String);
-    if miscVar.LapNumber<1 || mod(str2double(videoFig.LapNumberBox.String),1)~=0
-        msgbox('Lap number must be integer > zero.', 'Error','error');
-        miscVar.LapNumber=miscVar.hold;
-        videoFig.LapNumberBox.String=miscVar.LapNumber;
-        videoFig.LapNumberBox.BackgroundColor=miscVar.Red;
-        disp(num2str(miscVar.LapNumber))
-    else    
-        videoFig.LapNumberButton.BackgroundColor=miscVar.Gray;
-        %miscVar.LapNumber=str2double(videoFig.LapNumberBox.String);
-        switch any(miscVar.LapsWorkedOn==miscVar.LapNumber)
-            case 0
-                for buttonCol=1:length(miscVar.buttonsInUse)
-                    eval(['videoFig.',miscVar.buttonsInUse{buttonCol},'.BackgroundColor=miscVar.Red;'])
-                end
-            case 1
-                %message things will be overwritten
-        end
-        miscVar.LapsWorkedOn=[miscVar.LapsWorkedOn; miscVar.LapNumber];
-        disp(['Lap number is ' num2str(miscVar.LapNumber)])
-    end    
-catch
-    msgbox('Lap number must be an integer.', 'Error','error');
-    videoFig.LapNumberBox.BackgroundColor=miscVar.Red;
-end
-videoFig;
+videoFig.DrawURoutlineButton = uicontrol('Style','pushbutton','String','DRAW UR outline',...
+                             'Position',[miscVar.buttonSecondCol,miscVar.upperLimit - miscVar.buttonStepDown*5,...
+                             miscVar.buttonWidth,30], 'Callback',{@fcnDrawURoutline});
+videoFig.DrawURoutlineButton.BackgroundColor=miscVar.Green;
 
 end
-function fcnLapNumberPlus(~,~)
-global videoFig
+
+%% Button Functions
+function fcnUpperRightButton(~,~)
 global miscVar
-disp('Lap number plus')
-switch mod(str2double(videoFig.LapNumberBox.String),1)~=0
-    case 0
-    videoFig.LapNumberBox.String=num2str(str2double(videoFig.LapNumberBox.String)+1);
-    videoFig.LapNumberButton.BackgroundColor=miscVar.Red;
-    case 1
-    msgbox('Lap number must be an integer.', 'Error','error');
-end    
-end
-function fcnLapNumberMinus(~,~)
-global videoFig
-global miscVar
-disp('Lap number minus')
-if str2double(videoFig.LapNumberBox.String)-1>0
-switch mod(str2double(videoFig.LapNumberBox.String),1)~=0
-    case 0
-    videoFig.LapNumberBox.String=num2str(str2double(videoFig.LapNumberBox.String)-1);
-    videoFig.LapNumberButton.BackgroundColor=miscVar.Red;
-    case 1
-    msgbox('Lap number must be an integer.', 'Error','error');
-end     
+if miscVar.VideoLoadedFlag==1
+    fcnAddUR
+    updatebuttoncolor
 end
 end
-%%
-function fcnLapStartButton(~,~)
-disp('Lap Start')
+
+function fcnNeitherButton(~,~)
 global miscVar
-global ParsedFrames
+if miscVar.VideoLoadedFlag==1
+    fcnNeither
+    updatebuttoncolor
+
+end
+end
+
+function fcnLowerLeftButton(~,~)
+global miscVar
+if miscVar.VideoLoadedFlag==1
+    fcnAddLL
+    updatebuttoncolor
+end
+end
+
+function fcnQuestionableButton(~,~)
+global miscVar
+if miscVar.VideoLoadedFlag==1
+    fcnQuestionableTag
+    updatebuttoncolor
+end
+end
+%% Object Outline Functions
+function fcnDrawLLoutline(~,~)
+global miscVar
 global videoFig
 if miscVar.VideoLoadedFlag==1
-    ParsedFrames.LapStart{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.LapStart{miscVar.LapNumber+1,1}))
-    videoFig.LapStartButton.BackgroundColor=miscVar.Gray;
+    [~, xi, yi] = roipoly;
+    [miscVar.xLL, miscVar.yLL] = dilate_shape(xi,yi,12);
+    videoFig.DrawLLoutlineButton.BackgroundColor=miscVar.Gray;
+    fcnRefreshOutlines
 end
 end
-function fcnEnterDelayButton(~,~)
-disp('Enter Delay')
+
+function fcnDrawURoutline(~,~)
 global miscVar
-global ParsedFrames
 global videoFig
 if miscVar.VideoLoadedFlag==1
-    ParsedFrames.EnterDelay{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.EnterDelay{miscVar.LapNumber+1,1}))
-    videoFig.EnterDelayButton.BackgroundColor=miscVar.Gray;
+    [~, xi, yi] = roipoly;
+    [miscVar.xUR, miscVar.yUR] = dilate_shape(xi,yi,12);
+    videoFig.DrawURoutlineButton.BackgroundColor=miscVar.Gray;
+    fcnRefreshOutlines
 end
 end
-function fcnLiftBarrierButton(~,~)
-disp('Lift Barrier')
+
+function fcnRefreshOutlines(~,~)
 global miscVar
-global ParsedFrames
 global videoFig
-if miscVar.VideoLoadedFlag==1
-    ParsedFrames.LiftBarrier{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.LiftBarrier{miscVar.LapNumber+1,1}))
-    videoFig.LiftBarrierButton.BackgroundColor=miscVar.Gray;
+
+figure(videoFig.videoPanel);
+hold on
+
+% Update LL object
+if ~isempty(miscVar.xLL) && ~isempty(miscVar.yLL)
+    plot(miscVar.xLL, miscVar.yLL,'r');
 end
+
+%Update UR object
+if ~isempty(miscVar.xUR) && ~isempty(miscVar.yUR)
+    plot(miscVar.xUR, miscVar.yUR,'r');
 end
-function fcnLeaveMazeButton(~,~)
-disp('Leave Maze')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    ParsedFrames.LeaveMaze{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.LeaveMaze{miscVar.LapNumber+1,1}))
-    videoFig.LeaveMazeButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnStartHomecageButton(~,~)
-disp('Start Homecage')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    ParsedFrames.StartHomecage{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.StartHomecage{miscVar.LapNumber+1,1}))
-    videoFig.StartHomecageButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnLeaveHomecageButton(~,~)
-disp('Leave Homecage')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    ParsedFrames.LeaveHomecage{miscVar.LapNumber+1,1}=miscVar.frameNum;
-    disp(num2str(ParsedFrames.LeaveHomecage{miscVar.LapNumber+1,1}))
-    videoFig.LeaveHomecageButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnForcedDirButton(~,~)
-disp('Forced Direction')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    switch videoFig.PopForcedDir.Value
-        case 1
-            ParsedFrames.ForcedDir{miscVar.LapNumber+1,1}='L';
-        case 2    
-            ParsedFrames.ForcedDir{miscVar.LapNumber+1,1}='R';
-    end        
-    disp(ParsedFrames.ForcedDir{miscVar.LapNumber+1,1})
-    videoFig.ForcedDirButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnFreeDirButton(~,~)
-disp('Free Direction')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    switch videoFig.PopFreeDir.Value
-        case 1
-            ParsedFrames.FreeDir{miscVar.LapNumber+1,1}='L';
-        case 2    
-            ParsedFrames.FreeDir{miscVar.LapNumber+1,1}='R';
-    end        
-    disp(ParsedFrames.FreeDir{miscVar.LapNumber+1,1})
-    videoFig.FreeDirButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnTrialTypeButton(~,~)
-disp('Trial type')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    switch videoFig.PopTrialType.Value
-        case 1
-            ParsedFrames.TrialType{miscVar.LapNumber+1,1}='FORCED';
-        case 2    
-            ParsedFrames.TrialType{miscVar.LapNumber+1,1}='FREE';
-    end        
-    disp(ParsedFrames.TrialType{miscVar.LapNumber+1,1})
-    videoFig.TrialTypeButton.BackgroundColor=miscVar.Gray;
-end
-end
-function fcnTrialDirButton(~,~)
-disp('Trial Direction')
-global miscVar
-global ParsedFrames
-global videoFig
-if miscVar.VideoLoadedFlag==1
-    switch videoFig.PopTrialDir.Value
-        case 1
-            ParsedFrames.TrialDir{miscVar.LapNumber+1,1}='L';
-        case 2    
-            ParsedFrames.TrialDir{miscVar.LapNumber+1,1}='R';
-    end        
-    disp(ParsedFrames.TrialDir{miscVar.LapNumber+1,1})
-    videoFig.TrialDirButton.BackgroundColor=miscVar.Gray;
-end
+
+hold off
+
 end
 %%
 function fcnJumpFrameButton(~,~)
@@ -437,21 +186,23 @@ global video
 
 if miscVar.VideoLoadedFlag==1
     try
-        jumpFrame = inputdlg('Jump to what frame?');
-        switch mod(str2double(jumpFrame{:}),1)==0
+        jumpSec = inputdlg('Jump to what second?');
+        switch mod(str2double(jumpSec{:}),1)==0
             case 0
-                msgbox('Frame number must be an integer','Error','error')
-            case 1  
-                jumpFrame=str2double(jumpFrame{:});
+                msgbox('Time must be an integer','Error','error')
+            case 1
+                jumpSec=str2double(jumpSec{:});
+                jumpFrame = jumpSec*30+1;
                 if jumpFrame>0 && jumpFrame <=miscVar.totalFrames
                     miscVar.frameNum = jumpFrame-1;
-                    video.CurrentTime = miscVar.frameNum/video.FrameRate;
+                    miscVar.currentTime = miscVar.frameNum/video.FrameRate;
                     miscVar.currentFrame = readFrame(video);
                     miscVar.frameNum = miscVar.frameNum + 1;
                     videoFig.plotted = imagesc(miscVar.currentFrame);
-                    title(['frame ' num2str(miscVar.frameNum) '/' num2str(miscVar.totalFrames)])
+                    title(['Time ' num2str(round(miscVar.frameNum/30)) ' / ' num2str(round(miscVar.totalFrames/30)) ' seconds'])
+                    fcnSaveNOVar
                 else   
-                    msgbox('Frame number must in range','Error','error')
+                    msgbox('Time must in range','Error','error')
                 end
         end
     catch
@@ -459,240 +210,311 @@ if miscVar.VideoLoadedFlag==1
     end 
 end    
 end
-function fcnLoadVideo(~,~)
+%%
+function fcnJumpLastFrame(~,~)
 global videoFig
 global miscVar
 global video
+global NOVar
+
+if miscVar.VideoLoadedFlag==1
+    try
+        jumpFrame = NOVar.LastFrame;
+        if jumpFrame>0 && jumpFrame <=miscVar.totalFrames
+            miscVar.frameNum = jumpFrame-1;
+            miscVar.currentTime = miscVar.frameNum/video.FrameRate;
+            miscVar.currentFrame = readFrame(video);
+            miscVar.frameNum = miscVar.frameNum + 1;
+            videoFig.plotted = imagesc(miscVar.currentFrame);
+            title(['Time ' num2str(round(miscVar.frameNum/30)) ' / ' num2str(round(miscVar.totalFrames/30)) ' seconds'])
+            fcnSaveNOVar
+        else
+            msgbox('Error jumping to last frame accessed','Error','error')
+        end
+    catch
+        msgbox('Why would you even?')
+    end 
+end    
+end
+
+%%
+function fcnLoadVideo(~,~)
+global videoFig
+global miscVar
+global NOVar
+global video
 
 try
-[miscVar.FileName,miscVar.PathName] = uigetfile('*.AVI','Select the AVI file');
-video = VideoReader(fullfile(miscVar.PathName,miscVar.FileName));
-miscVar.currentTime = 0;
-miscVar.currentFrame = readFrame(video);
-miscVar.currentTime = miscVar.currentTime+video.FrameRate^-1;
-miscVar.frameNum = 1;
-miscVar.totalFrames = video.Duration/video.FrameRate^-1;
-videoFig.plotted;
-imagesc(miscVar.currentFrame);
-title(['Frame ' num2str(miscVar.frameNum) '/' num2str(miscVar.totalFrames)])
-miscVar.VideoLoadedFlag=1;
-videoFig.Name=miscVar.FileName;
+    [NOVar.FileName, NOVar.PathName] = uigetfile('*.AVI','Select the AVI file');
+    video = VideoReader(fullfile(NOVar.PathName, NOVar.FileName));
+    miscVar.currentTime = 0;
+    miscVar.currentFrame = readFrame(video);
+    miscVar.currentTime = miscVar.currentTime+video.FrameRate^-1;
+    miscVar.frameNum = 1;
+    miscVar.totalFrames = video.Duration/video.FrameRate^-1;
+    videoFig.plotted;
+    imagesc(miscVar.currentFrame);
+    title(['Time ' num2str(round(miscVar.frameNum/30)) ' / ' num2str(round(miscVar.totalFrames/30)) ' seconds'])
+    miscVar.VideoLoadedFlag=1;
+    videoFig.Name=NOVar.FileName;
+    NOVar.LastFrame = 1; % Last frame viewed tracker
+    
+    % Check for existing NOtracking in workspace, prompt to load it 
+    if exist(fullfile(NOVar.PathName, 'NOtracking.mat'),'file')
+        temp = importdata(fullfile(NOVar.PathName, 'NOtracking.mat'));
+        if exist(fullfile(temp.PathName, temp.FileName),'file')
+            use_existing = input('Existing NOVar.mat file found.  Do you wish use? (y/n - Note that ''n'' will overwrite existing file): ', 's');
+            if strcmpi(use_existing,'y')
+                load(fullfile(NOVar.PathName, 'NOtracking.mat'));
+                NOVar = NOtracking; % load saved NOvar variable
+                
+                % Re-draw outlines if necessary
+                miscVar.xLL = NOtracking.xLL;
+                miscVar.yLL = NOtracking.yLL;
+                miscVar.xUR = NOtracking.xUR;
+                miscVar.yUR = NOtracking.yUR;
+                fcnRefreshOutlines;
+                
+                % Load last frame visited
+                fcnJumpLastFrame;
+                
+            elseif strcmpi(use_existing,'n')
+                save(fullfile(NOVar.PathName, 'NOtracking_old.mat'),'temp');
+            end
+        end
+    end
+    
 catch
     disp('Something went wrong')
 end
 end
 
-function fcnSaveSheet(~,~)
-global ParsedFrames
-global miscVar
-disp('Save sheet')
-for laps=1:(size(ParsedFrames.LapStart,1)-1);
-    ParsedFrames.LapNumber{laps+1,1}=laps;
-end    
-try 
-switch miscVar.sessionClass
-    case 1
-realTable=table(ParsedFrames.LapNumber,...
-                ParsedFrames.LapStart,...
-                ParsedFrames.LiftBarrier,...
-                ParsedFrames.LeaveMaze,...
-                ParsedFrames.StartHomecage,...
-                ParsedFrames.LeaveHomecage,...
-                ParsedFrames.ForcedDir,...
-                ParsedFrames.FreeDir);
-    case 2
-realTable=table(ParsedFrames.LapNumber,...
-                ParsedFrames.LapStart,...
-                ParsedFrames.LeaveMaze,...
-                ParsedFrames.StartHomecage,...
-                ParsedFrames.LeaveHomecage,...
-                ParsedFrames.TrialType,...
-                ParsedFrames.TrialDir);       
-end        
-bonusTable=table(ParsedFrames.LapNumber,...
-              ParsedFrames.EnterDelay);
-catch 
-    save 'luckyYou.mat' 'ParsedFrames'
-    disp('saved what you had')
-    %Error handling!
-end            
-             
-undecided=0; saveNow=0;
-while undecided==0
-    saveName = inputdlg('Name to save as:','Save Name',[1 40],{'DNMPsheet.xlsx'});             
-    if exist(fullfile(miscVar.PathName,saveName{1}),'file')==2
-      filechoice = questdlg('File already exists!', 'File exists',...
-                              'Replace','New name','Cancel','Replace');
-        switch filechoice
-            case 'Replace'
-                undecided=1; saveNow=1;
-            case 'New name'
-                undecided=0;
-            case 'Cancel'
-                undecided=1; saveNow=1;
-        end
-    else 
-        disp('File does not exist.  Writing new file')
-        undecided = 1; saveNow = 1;
-    end
-end
-if saveNow==1;
-    try
-        xlswrite(fullfile(miscVar.PathName,saveName{1}),table2cell(realTable));
-        xlswrite(fullfile(miscVar.PathName,[saveName{1}(1:end-5) '_bonus.xlsx']),table2cell(bonusTable));
-    catch
-        disp('Some saving error')   
-    end    
-end
-end
-
-
-function fcnLoadSheet(~,~)
-disp('Load sheet')
-global ParsedFrames
-global miscVar
-[filename, pathname, ext] = uigetfile({'*.xlsx', 'Excel Files'; '*.xls', 'Excel Files'}, 'Select previously saved sheet: ');
-
-[~, ~, raw] = xlsread(fullfile(pathname, filename));
-
-switch miscVar.sessionClass
-    case 1
-        ParsedFrames.LapNumber = raw(:,1);
-        ParsedFrames.LapStart = raw(:,2);
-        ParsedFrames.LiftBarrier = raw(:,3);
-        ParsedFrames.LeaveMaze = raw(:,4);
-        ParsedFrames.StartHomecage = raw(:,5);
-        ParsedFrames.LeaveHomecage = raw(:,6);
-        ParsedFrames.ForcedDir = raw(:,7);
-        ParsedFrames.FreeDir = raw(:,8);
-    case 2
-        ParsedFrames.LapNumber = raw(:,1);
-        ParsedFrames.LapStart = raw(:,2);
-        ParsedFrames.LeaveMaze = raw(:,3);
-        ParsedFrames.StartHomecage = raw(:,4);
-        ParsedFrames.LeaveHomecage = raw(:,5);
-        ParsedFrames.TrialType = raw(:,6);
-        ParsedFrames.TrialDir = raw(:,7);
-end
-bonus_sheet = fullfile(pathname, [filename(1:end-5) '_bonus.xlsx']);
-[~,~,bonus_raw] = xlsread(bonus_sheet);
-ParsedFrames.EnterDelay = bonus_raw(:,2);
-
-end
-
-function fcnFakePlayer(~,~)
-disp('fake player')
-end
 %%
 function keyPress(~, e)%src
 
 global miscVar
 global videoFig
 global video
-global NOVar
 
 %pause(0.001)
 %e.Key
 
 switch e.Key
-%     case 'q' %Step back 100
-%         if video.currentTime > 100/video.FrameRate
-%             miscVar.frameNum = miscVar.frameNum - 101;
-%             video.CurrentTime = miscVar.frameNum/video.FrameRate;
-%             miscVar.currentFrame = readFrame(video);
-%             miscVar.frameNum = miscVar.frameNum + 1;
-%             videoFig.plotted = imagesc(miscVar.currentFrame);
-%             title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
-%         end
-    case 'a' %Step back 10
-        if video.currentTime > 10/video.FrameRate
-            miscVar.frameNum = miscVar.frameNum - 11;
-            video.CurrentTime = miscVar.frameNum/video.FrameRate;
+    case 'a' %Step back 30/15
+        if video.currentTime > 15/video.FrameRate % video.currentTime > 30/video.FrameRate
+            miscVar.frameNum = miscVar.frameNum - 16; % miscVar.frameNum = miscVar.frameNum - 31;
+            video.currentTime = miscVar.frameNum/video.FrameRate;
             miscVar.currentFrame = readFrame(video);
             miscVar.frameNum = miscVar.frameNum + 1;
             videoFig.plotted = imagesc(miscVar.currentFrame);
-            title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
+            fcnRefreshOutlines
+            updatetitletime
+            updatebuttoncolor
+            fcnSaveNOVar
         end
-%     case 's'   %Step back
-%         %can't do frame 0/1
-%         if video.currentTime > 1/video.FrameRate
-%             miscVar.frameNum = miscVar.frameNum - 2;
-%             video.CurrentTime = miscVar.frameNum/video.FrameRate;
-%             miscVar.currentFrame = readFrame(video);
-%             miscVar.frameNum = miscVar.frameNum + 1;
-%             videoFig.plotted = imagesc(miscVar.currentFrame);
-%             title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
-%         end
-%     case 'd' %Step forward 1
-%         if video.currentTime+1 <= miscVar.totalFrames
-%             miscVar.currentFrame = readFrame(video);
-%             miscVar.frameNum = miscVar.frameNum+1;
-%             videoFig.plotted = imagesc(miscVar.currentFrame);
-%             title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
-%         end
-    case 'f' %Step forward 10  
-        if video.currentTime+10 <= miscVar.totalFrames
-            miscVar.frameNum = miscVar.frameNum + 9;
-            video.CurrentTime = miscVar.frameNum/video.FrameRate;
+    case 'f' %Step forward 30/15  
+        if video.currentTime+1 <= miscVar.totalFrames/30 % video.currentTime+1 <= miscVar.totalFrames/30
+            miscVar.frameNum = miscVar.frameNum + 14; % miscVar.frameNum = miscVar.frameNum + 29;
+            video.currentTime = miscVar.frameNum/video.FrameRate;
             miscVar.currentFrame = readFrame(video);
             miscVar.frameNum = miscVar.frameNum + 1;
             videoFig.plotted = imagesc(miscVar.currentFrame);
-            title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
+            fcnRefreshOutlines
+            updatetitletime
+            updatebuttoncolor
+            fcnSaveNOVar
         end
-%     case 'r' %Step forward 100
-%         if video.currentTime+1 <= miscVar.totalFrames
-%             miscVar.frameNum = miscVar.frameNum + 99;
-%             video.CurrentTime = miscVar.frameNum/video.FrameRate;
-%             miscVar.currentFrame = readFrame(video);
-%             miscVar.frameNum = miscVar.frameNum + 1;
-%             videoFig.plotted = imagesc(miscVar.currentFrame);
-%             title(['Frame ' num2str(miscVar.frameNum) ' / ' num2str(miscVar.totalFrames)])
-%         end    
+
     case 'numpad1' % log framenum as LL
-   
-        NOVar.LLframes = unique([NOVar.LLframes miscVar.frameNum]); % Add existing frame number if unique and sort it
-        NOVar.nLL = length(NOVar.LLframes); %
-        if any(miscVar.frameNum == NOVar.URframes) % remove from NOVar.URframes if there already
-            ind_remove = miscVar.frameNum == NOVar.URframes;
-            NOVar.URframes = NOVar.URframes(~ind_remove);
-            NOVar.nUR = length(NOVar.URframes);
-            disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from upper-right exploration count'])
-        end
-        disp(['Frame ' num2str(miscVar.frameNum) ' ADDED to lower-left exploration count'])
-        save NOVar NOVar
+        fcnAddLL
+        updatebuttoncolor
         
     case 'numpad9' % log framenum as UR
-        
-        NOVar.URframes = unique([NOVar.URframes miscVar.frameNum]); % Add existing frame number if unique and sort it
-        NOVar.nUR = length(NOVar.URframes); %
-        if any(miscVar.frameNum == NOVar.LLframes) % remove from NOVar.LLframes if there already
-            ind_remove = miscVar.frameNum == NOVar.LLframes;
-            NOVar.LLframes = NOVar.LLframes(~ind_remove);
-            NOVar.nLL = length(NOVar.LLframes);
-            disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from lower-left exploration count'])
-        end
-        disp(['Frame ' num2str(miscVar.frameNum) ' ADDED to upper-right exploration count'])
-        save NOVar NOVar
+        fcnAddUR
+        updatebuttoncolor
         
     case 'numpad5' % remove framenum from LL or UR
+        fcnNeither
+        updatebuttoncolor
         
-        if any(miscVar.frameNum == NOVar.LLframes) % remove from NOVar.LLframes if there already
-            ind_remove = miscVar.frameNum == NOVar.LLframes;
-            NOVar.LLframes = NOVar.LLframes(~ind_remove);
-            NOVar.nLL = length(NOVar.LLframes);
-            disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from lower-left exploration count'])
-        elseif any(miscVar.frameNum == NOVar.URframes) % remove from NOVar.URframes if there already
-            ind_remove = miscVar.frameNum == NOVar.URframes;
-            NOVar.URframes = NOVar.URframes(~ind_remove);
-            NOVar.nUR = length(NOVar.URframes);
-            disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from upper-right exploration count'])
-        else
-            disp(['Frame ' num2str(miscVar.frameNum) ' isn''t already logged as lower-left or upper-right exploration.'])
-        end
-        save NOVar NOVar
-
+    case 'q' % Tag as questionable
+        fcnQuestionableTag
+        updatebuttoncolor
+        
     case 'space'    
         disp('Fake player start/stop')
 end
          
+end
+%% Update time in title
+function updatetitletime(~,~)
+global miscVar
+
+title(['Time ' num2str(round(miscVar.frameNum/30,1)) ' / ' num2str(round(miscVar.totalFrames/30,1)) ' seconds'])
+% title(['Time ' num2str(round(miscVar.frameNum/30)) ' / ' num2str(floor(miscVar.totalFrames/30)) ' seconds'])
+end
+
+%% Refresh buttons color
+function updatebuttoncolor(~,~)
+global NOVar
+global miscVar
+global videoFig
+
+% Identify if mouse is exploring either object
+LLactive = ~isempty(NOVar) && any(NOVar.LLframes == miscVar.frameNum);
+URactive = ~isempty(NOVar) && any(NOVar.URframes == miscVar.frameNum);
+
+% Set all buttons to gray
+for buttonCol=1:length(miscVar.buttonsInUse)
+    eval(['videoFig.',miscVar.buttonsInUse{buttonCol},'.BackgroundColor=miscVar.Gray;'])
+end
+
+% Make appropriate button red
+if LLactive && ~URactive
+    videoFig.LowerLeftButton.BackgroundColor=miscVar.Red;
+elseif ~LLactive && URactive
+    videoFig.UpperRightButton.BackgroundColor=miscVar.Red;
+elseif ~LLactive && ~URactive
+    videoFig.NeitherButton.BackgroundColor=miscVar.Red;
+elseif LLactive && URactive
+    error('Something wrong - mouse appears to be exploring both objects at the same time')
+end
+
+% Tag as questionable if desired
+if any(miscVar.frameNum == NOVar.Questionable)
+    videoFig.QuestionableButton.BackgroundColor=miscVar.Red;
+end
+
+end
+
+%% Add Lower-Left exploration
+function fcnAddLL(~,~)
+global NOVar
+global miscVar
+
+NOVar.LLframes = unique([NOVar.LLframes miscVar.frameNum]); % Add existing frame number if unique and sort it
+NOVar.nLL = length(NOVar.LLframes); %
+if any(miscVar.frameNum == NOVar.URframes) % remove from NOVar.URframes if there already
+    ind_remove = miscVar.frameNum == NOVar.URframes;
+    NOVar.URframes = NOVar.URframes(~ind_remove);
+    NOVar.nUR = length(NOVar.URframes);
+    disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from upper-right object exploration count'])
+end
+disp(['Frame ' num2str(miscVar.frameNum) ' ADDED to lower-left object exploration count'])
+
+fcnSaveNOVar
+% save NOVar NOVar
+
+end
+%% Add Upper-Right exploration
+function fcnAddUR(~,~)
+global NOVar
+global miscVar
+
+NOVar.URframes = unique([NOVar.URframes miscVar.frameNum]); % Add existing frame number if unique and sort it
+NOVar.nUR = length(NOVar.URframes); %
+if any(miscVar.frameNum == NOVar.LLframes) % remove from NOVar.LLframes if there already
+    ind_remove = miscVar.frameNum == NOVar.LLframes;
+    NOVar.LLframes = NOVar.LLframes(~ind_remove);
+    NOVar.nLL = length(NOVar.LLframes);
+    disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from lower-left object exploration count'])
+end
+disp(['Frame ' num2str(miscVar.frameNum) ' ADDED to upper-right object exploration count'])
+
+fcnSaveNOVar
+% save NOVar NOVar
+
+end
+
+%% Remove Upper-Right/Lower-Left exploration
+function fcnNeither(~,~)
+global NOVar
+global miscVar
+
+if any(miscVar.frameNum == NOVar.LLframes) % remove from NOVar.LLframes if there already
+    ind_remove = miscVar.frameNum == NOVar.LLframes;
+    NOVar.LLframes = NOVar.LLframes(~ind_remove);
+    NOVar.nLL = length(NOVar.LLframes);
+    disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from lower-left object exploration count'])
+elseif any(miscVar.frameNum == NOVar.URframes) % remove from NOVar.URframes if there already
+    ind_remove = miscVar.frameNum == NOVar.URframes;
+    NOVar.URframes = NOVar.URframes(~ind_remove);
+    NOVar.nUR = length(NOVar.URframes);
+    disp(['Frame ' num2str(miscVar.frameNum) ' REMOVED from upper-right object exploration count'])
+else
+    disp(['Frame ' num2str(miscVar.frameNum) ' isn''t already logged as lower-left or upper-right object exploration.'])
+end
+
+fcnSaveNOVar
+% save NOVar NOVar
+
+end
+
+%% Tag as questionable
+function fcnQuestionableTag(~,~)
+global NOVar
+global miscVar
+
+qbool = miscVar.frameNum == NOVar.Questionable;
+if any(qbool) % If already tagged, remove it
+    NOVar.Questionable = NOVar.Questionable(~qbool);
+else % Add it if not tagged
+    NOVar.Questionable = [NOVar.Questionable, miscVar.frameNum];
+end
+   
+end
+
+%% Save NOVar to workspace as non-global variable
+function fcnSaveNOVar(~,~)
+global miscVar
+
+NOtracking = fcnUpdateNOVar;
+
+time_use = round(NOtracking.LastFrame/30);
+if time_use < floor(miscVar.totalFrames/30)
+    xlabel('YOU STILL HAVE FRAMES LEFT TO VIEW','Color','Red')
+else
+    xlabel('You have viewed all frames','Color','Black')
+end
+
+save(fullfile(NOtracking.PathName,'NOtracking.mat'),'NOtracking');
+
+end
+
+%% Save Temp Video - saves a file that is NOT overwritten if NOvar.mat is re-used and has date/time-stamp
+function fcnSaveTempFile(~,~)
+
+NOtracking = fcnUpdateNOVar;
+save(fullfile(NOtracking.PathName,['NOtracking' datestr(now,30) '.mat']),'NOtracking');
+
+end
+
+%% Save Final Video - saves a final NOtracking file when finished.  Only overwritten when button is pushed.
+function fcnSaveFinalFile(~,~)
+
+NOtracking = fcnUpdateNOVar;
+save(fullfile(NOtracking.PathName,'NOtracking_final.mat'),'NOtracking');
+
+end
+
+%% Update NOVar variable
+function [NOtracking] = fcnUpdateNOVar(~,~)
+global NOVar
+global miscVar
+NOtracking.LLframes = NOVar.LLframes;
+NOtracking.URframes = NOVar.URframes;
+NOtracking.nUR = NOVar.nUR;
+NOtracking.nLL = NOVar.nLL;
+NOtracking.PathName = NOVar.PathName;
+NOtracking.FileName = NOVar.FileName;
+NOtracking.Questionable = NOVar.Questionable;
+NOtracking.xLL = miscVar.xLL;
+NOtracking.yLL = miscVar.yLL;
+NOtracking.xUR = miscVar.xUR;
+NOtracking.yUR = miscVar.yUR;
+NOtracking.currentFrame = miscVar.currentFrame;
+
+% Update frame viewed
+NOVar.LastFrame = max([NOVar.LastFrame,miscVar.frameNum]);
+NOtracking.LastFrame = NOVar.LastFrame;
 end
